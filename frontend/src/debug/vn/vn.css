@@ -1,0 +1,1985 @@
+/* ══════════ 视觉小说界面 ══════════
+   颜色、圆角、字体全部走 --vn-* 变量:以后做多套 UI,换皮肤就是在
+   [data-skin="xxx"] 下重新定义这一组变量,结构不用动。
+
+   布局只有一套,横屏、竖屏、电脑、手机都用它,区别只在比例:
+     背景铺满(cover) → 立绘按高度贴底居中 → 对话框贴底、压住立绘的下半身
+   手机横屏时高度最紧张,对话框和字号单独收紧(见文件末尾的媒体查询)。
+
+   这一版只求流程跑通,配色还是占位,等设计稿再换。 */
+
+.vn-root {
+  --vn-accent: #f4a9c4;
+  --vn-accent-ink: #2b1420;
+  --vn-glass: rgba(13, 15, 27, 0.72);
+  --vn-glass-strong: rgba(15, 17, 29, 0.94);
+  --vn-border: rgba(255, 255, 255, 0.14);
+  --vn-text: #f6f3f8;
+  --vn-text-dim: rgba(246, 243, 248, 0.6);
+  --vn-text-faint: rgba(246, 243, 248, 0.4);
+  --vn-narration: #d4ddf0;
+  --vn-user: #a9cbff;
+  --vn-ok: #9be3b5;
+  --vn-miss: #ff9d9d;
+  --vn-radius: 14px;
+  --vn-font: system-ui, -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Noto Sans CJK SC', sans-serif;
+  --vn-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --vn-sprite-top: 7%;
+  --vn-gutter: 12px;
+  /* 设置里调的两项,由 VNScreen 写在行内样式上 */
+  --vn-box-alpha: 0.72;
+  --vn-text-scale: 1;
+
+  position: fixed;
+  inset: 0;
+  /* 比调试台的抽屉高,比全局提示条(toast,100)低:在这里出错也看得到提示 */
+  z-index: 90;
+  height: 100dvh;
+  overflow: hidden;
+  background: #000;
+  color: var(--vn-text);
+  font-family: var(--vn-font);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+/* ---- 舞台:背景 + 立绘,点哪里都是下一句 ---- */
+
+.vn-stage {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+}
+
+.vn-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 换场景:旧图先淡出,新图稍后淡入,中间透出一点黑底 */
+.vn-bg.leaving {
+  animation: vn-fade-out 0.45s ease both;
+}
+.vn-bg.entering {
+  animation: vn-fade-in 0.55s ease 0.3s both;
+}
+
+.vn-sprite-stage {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--vn-sprite-top);
+  bottom: 0;
+  pointer-events: none;
+}
+
+/* 新旧两张图叠在同一个位置交叉淡入淡出,所以用绝对定位 + 水平居中。
+   永远按高度铺满、宽度不设上限:宽立绘(比如带披风的全身像)在竖屏上
+   如果被屏幕宽度卡住,整张图会等比缩小,脸就掉到对话框后面去了 ——
+   宁可两侧超出屏幕被裁掉,也要保证脸在对话框上方 */
+.vn-sprite {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  height: 100%;
+  width: auto;
+  max-width: none;
+  transform: translateX(-50%);
+  object-fit: contain;
+  object-position: bottom center;
+  filter: drop-shadow(0 6px 24px rgba(0, 0, 0, 0.25));
+}
+
+/* 没有图时的占位:半透明长方形,写上角色名和当前表情 */
+.vn-sprite-ph {
+  height: 88%;
+  aspect-ratio: 1 / 2;
+  max-width: 70%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding-top: 16%;
+  border: 1.5px dashed rgba(255, 255, 255, 0.6);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  filter: none;
+  text-align: center;
+}
+.vn-sprite-ph-name {
+  font-size: clamp(18px, 3vh, 26px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.vn-sprite-ph-label {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 14px;
+  color: var(--vn-text);
+}
+
+.vn-sprite.entering {
+  animation: vn-fade-in 0.32s ease both;
+}
+.vn-sprite.leaving {
+  animation: vn-fade-out 0.32s ease both;
+}
+
+@keyframes vn-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes vn-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---- 羽毛:思考中、生成中、加载都用它 ---- */
+
+.vn-feather {
+  display: block;
+  flex: none;
+  color: var(--vn-accent);
+}
+.vn-feather.breathe {
+  animation: vn-breathe 1.6s ease-in-out infinite;
+}
+.vn-feather.drift {
+  animation: vn-drift 2.4s ease-in-out infinite;
+}
+@keyframes vn-breathe {
+  0%,
+  100% {
+    transform: scale(0.86);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+@keyframes vn-drift {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-8deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(6deg);
+  }
+}
+
+/* ---- 右上角:模型标签 ---- */
+
+.vn-topbar {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 10px);
+  right: calc(env(safe-area-inset-right) + var(--vn-gutter));
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  transition: opacity 0.25s;
+  pointer-events: none;
+}
+.vn-chip {
+  max-width: 50vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--vn-border);
+  background: rgba(13, 15, 27, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: 12px;
+  color: var(--vn-text-dim);
+}
+
+.vn-pill {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--vn-border);
+  background: rgba(13, 15, 27, 0.55);
+  color: var(--vn-text);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vn-pill:hover:not(:disabled) {
+  background: rgba(13, 15, 27, 0.78);
+}
+.vn-pill.accent {
+  background: var(--vn-accent);
+  border-color: transparent;
+  color: var(--vn-accent-ink);
+  font-weight: 700;
+}
+.vn-pill:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.vn-pill:focus {
+  outline: none;
+}
+.vn-pill:focus-visible {
+  outline: 2px solid var(--vn-accent);
+  outline-offset: 2px;
+}
+
+/* ---- 对话框 + 输入框 ---- */
+
+.vn-window {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + var(--vn-gutter));
+  z-index: 2;
+  transform: translateX(-50%);
+  width: min(
+    1100px,
+    calc(100% - 2 * var(--vn-gutter) - env(safe-area-inset-left) - env(safe-area-inset-right))
+  );
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: opacity 0.25s;
+}
+
+.vn-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: clamp(128px, 24vh, 214px);
+  padding: 26px 30px 8px;
+  border-radius: var(--vn-radius);
+  border: 1px solid var(--vn-border);
+  background: rgba(13, 15, 27, var(--vn-box-alpha));
+  backdrop-filter: blur(10px) saturate(1.15);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.vn-name {
+  position: absolute;
+  top: -15px;
+  left: 22px;
+  max-width: calc(100% - 160px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 16px;
+  border-radius: 999px;
+  background: var(--vn-accent);
+  color: var(--vn-accent-ink);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+/* 玩家台词插件:选中的玩家台词,名牌用玩家的颜色 */
+.vn-name.player {
+  background: var(--vn-user);
+  color: #10213d;
+}
+
+/* 玩家台词插件:galgame 式的选项,浮在对话框上方的正中。整层不挡点击(点空白处照样是
+   舞台的「下一句」,也算选中),只有按钮本身接点击;压在对话框底下 */
+.vn-choice-layer {
+  position: absolute;
+  inset: 0 0 32vh;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 calc(var(--vn-gutter) + 8px);
+  pointer-events: none;
+  transition: opacity 0.25s;
+  /* 不留 fill:留着的话动画结束的 opacity 会盖过「隐藏界面」 */
+  animation: vn-fade-in 0.25s ease;
+}
+.vn-choice {
+  pointer-events: auto;
+  width: min(680px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 28px;
+  border-radius: var(--vn-radius);
+  border: 1px solid var(--vn-border);
+  background: var(--vn-glass-strong);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(169, 203, 255, 0.12);
+  color: var(--vn-text);
+  font: inherit;
+  font-size: calc(clamp(16px, 0.9vw + 10px, 21px) * var(--vn-text-scale));
+  line-height: 1.6;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.vn-choice:hover:not(:disabled),
+.vn-choice:focus-visible {
+  border-color: var(--vn-user);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4), 0 0 0 3px rgba(169, 203, 255, 0.22);
+  transform: translateY(-1px);
+  outline: none;
+}
+/* 流式时这句还没写完:先露出来,写完才能选 */
+.vn-choice:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.vn-choice-ja {
+  font-size: 0.72em;
+  color: var(--vn-text-dim);
+}
+.vn-choice-text {
+  word-break: break-word;
+}
+/* 翻回历史时当时玩家发的话:可能有好几行(台词 + 动作) */
+.vn-choice.past .vn-choice-text {
+  white-space: pre-wrap;
+}
+.vn-choice-cap {
+  font-size: 0.62em;
+  letter-spacing: 0.12em;
+  color: var(--vn-user);
+}
+
+/* 生成中:对话框右上角一枚小标,羽毛在呼吸 */
+.vn-gen {
+  position: absolute;
+  top: -13px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--vn-border);
+  background: var(--vn-glass-strong);
+  font-size: 12px;
+  color: var(--vn-text-dim);
+}
+
+.vn-text {
+  font-size: calc(clamp(16px, 0.9vw + 10px, 21px) * var(--vn-text-scale));
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.vn-text.narration {
+  color: var(--vn-narration);
+}
+
+/* 外语插件:中文上方的日语,小一号、淡一点;和下面的中文挨近些(对话框的 gap 是 8px) */
+.vn-ja {
+  font-size: calc(clamp(16px, 0.9vw + 10px, 21px) * var(--vn-text-scale) * 0.72);
+  line-height: 1.5;
+  color: var(--vn-text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  margin-bottom: -4px;
+}
+
+.vn-next,
+.vn-end {
+  position: absolute;
+  right: 18px;
+  bottom: 40px;
+  font-size: 12px;
+  color: var(--vn-accent);
+}
+.vn-next {
+  animation: vn-bob 1s ease-in-out infinite;
+}
+.vn-end {
+  opacity: 0.7;
+}
+
+@keyframes vn-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+.vn-caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--vn-accent);
+  animation: vn-blink 1s steps(2) infinite;
+}
+@keyframes vn-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.vn-empty {
+  color: var(--vn-text-dim);
+}
+
+/* 思考中 / 已思考:点开看思考内容 */
+.vn-think {
+  border-radius: 10px;
+  border: 1px solid var(--vn-border);
+  background: rgba(255, 255, 255, 0.05);
+  cursor: default;
+}
+.vn-think.live {
+  background: rgba(255, 255, 255, 0.07);
+}
+.vn-think-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: none;
+  color: var(--vn-text-dim);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.vn-think-head:disabled {
+  cursor: default;
+}
+.vn-think-label {
+  color: var(--vn-text);
+}
+.vn-think:not(.live) .vn-think-label {
+  color: var(--vn-text-dim);
+}
+.vn-think-secs {
+  font-variant-numeric: tabular-nums;
+}
+.vn-think-peek {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vn-text-faint);
+}
+.vn-think-more {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--vn-accent);
+}
+.vn-think-body {
+  max-height: 26vh;
+  overflow-y: auto;
+  padding: 0 14px 10px 36px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--vn-text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 快捷按钮:对话框底边一排小字 */
+.vn-quick {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: auto;
+  cursor: default;
+}
+.vn-quick button {
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--vn-text-dim);
+  cursor: pointer;
+}
+.vn-quick button:hover:not(:disabled) {
+  color: var(--vn-text);
+  background: rgba(255, 255, 255, 0.07);
+}
+.vn-quick button.on {
+  color: var(--vn-accent);
+}
+.vn-quick button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vn-input {
+  display: flex;
+  /* 输入框长高时,发送按钮留在底边 */
+  align-items: flex-end;
+  gap: 8px;
+}
+/* 多行输入框:一行时和原来的胶囊一样高,打多行时往上长(高度由脚本按内容算,封顶几行后滚动) */
+.vn-input textarea {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  font: inherit;
+  /* 16px 是 iOS 不自动放大页面的下限 */
+  font-size: 16px;
+  line-height: 1.4;
+  padding: 10px 16px;
+  border-radius: 20px;
+  resize: none;
+  overflow-y: auto;
+  border: 1px solid var(--vn-border);
+  background: rgba(13, 15, 27, 0.62);
+  color: var(--vn-text);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.vn-input textarea::placeholder {
+  color: var(--vn-text-dim);
+}
+.vn-input textarea:focus {
+  border-color: var(--vn-accent);
+}
+.vn-input textarea:disabled {
+  opacity: 0.6;
+}
+
+.vn-send {
+  flex: none;
+  /* 和单行时的输入框一样高;输入框长高后按钮不跟着拉长,留在底边 */
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: none;
+  background: var(--vn-accent);
+  color: var(--vn-accent-ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.vn-send.stop {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--vn-text);
+}
+.vn-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 「隐藏」:只留背景和立绘,点任意处恢复 */
+.vn-root.ui-hidden .vn-window,
+.vn-root.ui-hidden .vn-topbar,
+.vn-root.ui-hidden .vn-choice-layer,
+.vn-root.ui-hidden .vn-choice {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ══════════ 局内菜单 ══════════ */
+
+.vn-menu {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  background: rgba(8, 9, 17, 0.72);
+  backdrop-filter: blur(16px) saturate(0.7);
+  -webkit-backdrop-filter: blur(16px) saturate(0.7);
+  animation: vn-fade-in 0.22s ease both;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.vn-menu-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: calc(env(safe-area-inset-top) + 22px) 14px calc(env(safe-area-inset-bottom) + 16px)
+    calc(env(safe-area-inset-left) + 14px);
+  border-right: 1px solid var(--vn-border);
+  background: rgba(8, 9, 17, 0.55);
+}
+.vn-menu-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 10px 18px;
+}
+.vn-menu-brand > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vn-menu-brand strong {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vn-menu-brand span {
+  font-size: 12px;
+  color: var(--vn-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vn-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--vn-text-dim);
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vn-nav::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.vn-nav:hover {
+  color: var(--vn-text);
+}
+.vn-nav.on {
+  color: var(--vn-text);
+  background: rgba(255, 255, 255, 0.07);
+}
+.vn-nav.on::before {
+  background: var(--vn-accent);
+}
+.vn-nav.minor {
+  font-size: 13px;
+}
+.vn-nav-gap {
+  flex: 1;
+  min-height: 12px;
+}
+.vn-nav.back {
+  margin-top: 8px;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--vn-accent);
+  color: var(--vn-accent-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+.vn-nav.back::before {
+  display: none;
+}
+.vn-nav kbd {
+  font-family: var(--vn-mono);
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.vn-menu-page {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.vn-menu-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: calc(env(safe-area-inset-top) + 18px) calc(env(safe-area-inset-right) + 24px) 12px 24px;
+}
+.vn-menu-head h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+.vn-menu-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px calc(env(safe-area-inset-right) + 24px) calc(env(safe-area-inset-bottom) + 24px) 24px;
+  -webkit-overflow-scrolling: touch;
+}
+/* 嵌进来的调试台面板自己带滚动区:外面不滚,只负责撑满 */
+.page-log .vn-menu-body,
+.page-card .vn-menu-body,
+.page-preset .vn-menu-body,
+.page-model .vn-menu-body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.vn-page-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 16px;
+}
+.vn-page-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--vn-text-dim);
+}
+.vn-page-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.vn-page-empty {
+  margin: 40px 0;
+  text-align: center;
+  color: var(--vn-text-dim);
+}
+
+.vn-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--vn-text);
+  cursor: pointer;
+}
+.vn-switch input,
+.vn-set input[type='range'] {
+  accent-color: var(--vn-accent);
+}
+.vn-switch input {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---- 嵌进来的调试台面板:把调试台的颜色变量换成视觉小说的配色,结构一行不改 ---- */
+
+.vn-embed {
+  --bg: rgba(0, 0, 0, 0.28);
+  --bg-panel: transparent;
+  --bg-raised: rgba(255, 255, 255, 0.06);
+  --bg-hover: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --text: var(--vn-text);
+  --text-body: rgba(246, 243, 248, 0.86);
+  --text-dim: var(--vn-text-dim);
+  --text-faint: rgba(246, 243, 248, 0.42);
+  --accent: var(--vn-accent);
+  --accent-dim: rgba(244, 169, 196, 0.3);
+  --role-system: rgba(246, 243, 248, 0.55);
+  --role-user: var(--vn-user);
+  --role-assistant: var(--vn-text);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--vn-font);
+}
+.vn-embed > .panel {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  border: none;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+/* 调试台的下拉、按钮在毛玻璃上太「系统」,换成视觉小说的圆角 */
+.vn-embed .select,
+.vn-embed .text-input,
+.vn-embed .card-textarea,
+.vn-embed .card-name-input {
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-color: var(--vn-border);
+  color: var(--vn-text);
+}
+.vn-embed .btn {
+  border-radius: 999px;
+}
+.vn-embed .block-row {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+/* 调试台面板上的「收起」在菜单里没有意义(关菜单走左边的「返回游戏」) */
+.vn-embed .panel-collapse {
+  display: none;
+}
+.vn-embed .jump-latest.backlog {
+  left: auto;
+  right: 16px;
+  bottom: 16px;
+  transform: none;
+}
+.vn-embed .jump-latest.backlog:hover {
+  transform: scale(1.08);
+}
+
+/* ---- 模型:调试台的「API 设置」抽屉原样嵌进来 ---- */
+
+/* 在调试台里它是盖在聊天区顶上的抽屉(绝对定位 + 阴影 + 滑入动画),
+   在菜单里改成普通的一块,铺满、自己滚。插件页同理 */
+.vn-model-embed .conn-drawer,
+.vn-plugin-embed .conn-drawer {
+  position: static;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  border: none;
+  border-radius: 12px;
+  box-shadow: none;
+  animation: none;
+  background: rgba(0, 0, 0, 0.18);
+}
+.vn-model-embed .conn-drawer-body {
+  max-width: 820px;
+}
+.vn-embed .conn-textarea {
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-color: var(--vn-border);
+  color: var(--vn-text);
+}
+/* 16px 是 iOS 不自动放大页面的下限 */
+.vn-model-embed .text-input,
+.vn-model-embed .select,
+.vn-model-embed .conn-textarea {
+  font-size: 16px;
+}
+/* 插件页的提示词模板很长,桌面上 16px 太占地方,只在触屏上放大 */
+@media (hover: none) {
+  .vn-plugin-embed .text-input,
+  .vn-plugin-embed .select,
+  .vn-plugin-embed textarea {
+    font-size: 16px;
+  }
+}
+
+/* ---- 插件:调试台的插件抽屉原样嵌进来 ---- */
+
+/* 抽屉的标题栏(「插件 · PLUGINS」+ 关闭)和菜单页头重复,关菜单走左边的「返回游戏」 */
+.vn-plugin-embed .conn-drawer-head {
+  display: none;
+}
+.vn-plugin-embed .sp-nav {
+  background: rgba(0, 0, 0, 0.16);
+}
+.vn-plugin-embed .sp-nav-item.active {
+  color: var(--vn-accent);
+}
+.vn-plugin-embed .sp-body {
+  max-width: 900px;
+}
+.vn-embed .select option {
+  background: #15172a;
+  color: var(--vn-text);
+}
+
+.vn-tabs {
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.vn-tab {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 14px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--vn-text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vn-tab.active {
+  background: var(--vn-accent);
+  color: var(--vn-accent-ink);
+}
+
+/* ---- 存档 ---- */
+
+.vn-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+.vn-slot {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--vn-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+.vn-slot:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.vn-slot.current {
+  border-color: rgba(244, 169, 196, 0.6);
+}
+.vn-slot-open {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vn-slot.current .vn-slot-open {
+  cursor: default;
+}
+.vn-slot-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #0b0c16;
+}
+.vn-slot-thumb.loading {
+  animation: vn-pulse 1.2s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.06);
+}
+.vn-slot-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vn-slot-sprite {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  height: 94%;
+  width: auto;
+  max-width: none;
+  transform: translateX(-50%);
+  object-fit: contain;
+  object-position: bottom center;
+}
+.vn-slot-sprite.ph {
+  aspect-ratio: 1 / 2;
+  height: 86%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 14%;
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 12px;
+  font-weight: 700;
+}
+.vn-slot-sprite.ph small {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--vn-text-dim);
+}
+.vn-slot-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--vn-accent);
+  color: var(--vn-accent-ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+.vn-slot-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 6px;
+}
+.vn-slot-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.vn-slot-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vn-slot-time {
+  flex: none;
+  font-weight: 400;
+  color: var(--vn-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.vn-slot-line {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vn-narration);
+}
+.vn-slot-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 8px 12px;
+  min-height: 34px;
+}
+.vn-slot-count {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--vn-text-faint);
+}
+.vn-slot-actions button {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--vn-text-dim);
+  cursor: pointer;
+}
+.vn-slot-actions button:hover {
+  color: var(--vn-text);
+  background: rgba(255, 255, 255, 0.07);
+}
+.vn-slot-actions button.danger {
+  color: var(--vn-miss);
+}
+.vn-slot-rename {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--vn-accent);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--vn-text);
+  outline: none;
+}
+
+@keyframes vn-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---- 设置 ---- */
+
+.vn-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+}
+.vn-set-list {
+  display: flex;
+  flex-direction: column;
+}
+.vn-set {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 64px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.vn-set.wide {
+  grid-template-columns: 120px minmax(0, 1fr);
+}
+.vn-set-label {
+  font-size: 14px;
+}
+.vn-set-value {
+  font-size: 12px;
+  color: var(--vn-text-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.vn-set input[type='range'] {
+  width: 100%;
+}
+.vn-set-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vn-set-note {
+  font-size: 12px;
+  color: var(--vn-text-dim);
+}
+/* 设置页里一栏分几组(比如「声音」分音乐 / 语音) */
+.vn-set-group {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 18px 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vn-accent);
+}
+.vn-set-group:first-child {
+  padding-top: 4px;
+}
+.vn-set-group .vn-set-note {
+  font-weight: 400;
+}
+.vn-set-group .vn-pill {
+  margin-left: auto;
+  font-weight: 400;
+}
+.vn-set-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--vn-miss);
+}
+.vn-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  width: max-content;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  border: 1px solid var(--vn-border);
+}
+.vn-seg button {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 14px;
+  border: none;
+  background: none;
+  color: var(--vn-text-dim);
+  cursor: pointer;
+}
+.vn-seg button.on {
+  background: rgba(244, 169, 196, 0.2);
+  color: var(--vn-text);
+}
+.vn-seg button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.vn-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--vn-text-dim);
+}
+.vn-keys kbd {
+  font-family: var(--vn-mono);
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--vn-border);
+  color: var(--vn-text);
+}
+
+/* ---- 开发者:控制台 ---- */
+
+.vn-console-section + .vn-console-section {
+  margin-top: 18px;
+}
+.vn-console-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vn-text-dim);
+}
+.vn-console-sub {
+  margin-left: 10px;
+  font-weight: 400;
+}
+.vn-console-table code {
+  font-family: var(--vn-mono);
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--vn-text);
+  font-weight: 400;
+}
+.vn-console-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vn-miss);
+}
+/* 「此刻」那行是状态,不是警告 */
+.vn-console-note.now {
+  color: var(--vn-text-dim);
+}
+.vn-console-scroll {
+  overflow-x: auto;
+}
+.vn-console-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.vn-console-table th,
+.vn-console-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--vn-border);
+  text-align: left;
+  vertical-align: top;
+}
+.vn-console-table th {
+  font-weight: 600;
+  color: var(--vn-text-dim);
+}
+.vn-console-table td.ok {
+  color: var(--vn-ok);
+}
+.vn-console-table td.miss {
+  color: var(--vn-miss);
+}
+.vn-console-raw {
+  margin: 0;
+  padding: 12px;
+  max-height: 46vh;
+  overflow: auto;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  font-family: var(--vn-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.vn-console-raw mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  color: inherit;
+}
+.vn-console-raw mark.ok {
+  background: rgba(155, 227, 181, 0.25);
+  outline: 1px solid rgba(155, 227, 181, 0.6);
+}
+.vn-console-raw mark.miss {
+  background: rgba(255, 157, 157, 0.22);
+  outline: 1px solid rgba(255, 157, 157, 0.65);
+}
+/* 场景、音乐标签对上时换个颜色,和立绘标签区分开;对不上一律是红的 */
+.vn-console-raw mark.ok.k-bg {
+  background: rgba(169, 203, 255, 0.22);
+  outline-color: rgba(169, 203, 255, 0.6);
+}
+.vn-console-raw mark.ok.k-bgm {
+  background: rgba(244, 169, 196, 0.22);
+  outline-color: rgba(244, 169, 196, 0.6);
+}
+.vn-console-warn {
+  margin-left: 8px;
+  font-weight: 400;
+  color: var(--vn-miss);
+}
+
+/* ══════════ 标题画面 ══════════ */
+
+.vn-title {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  overflow: hidden;
+  background: #000;
+  animation: vn-fade-in 0.4s ease both;
+}
+.vn-title-bg {
+  position: absolute;
+  inset: -24px;
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  object-fit: cover;
+  filter: blur(10px) brightness(0.55) saturate(0.9);
+}
+.vn-title-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(6, 7, 14, 0.8) 0%, rgba(6, 7, 14, 0.25) 60%, rgba(6, 7, 14, 0.1));
+}
+.vn-title-main {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 40px;
+  padding: calc(env(safe-area-inset-top) + 32px) 32px calc(env(safe-area-inset-bottom) + 32px)
+    calc(env(safe-area-inset-left) + clamp(28px, 8vw, 120px));
+}
+.vn-title-mark {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vn-title-mark .vn-feather {
+  margin-bottom: 4px;
+}
+.vn-title-mark h1 {
+  margin: 0;
+  font-size: clamp(44px, 8vw, 88px);
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  line-height: 1;
+}
+.vn-title-mark p {
+  margin: 0;
+  font-size: 15px;
+  color: var(--vn-text-dim);
+  letter-spacing: 0.06em;
+}
+.vn-title-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.vn-title-menu button {
+  font: inherit;
+  font-size: 20px;
+  letter-spacing: 0.2em;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  color: var(--vn-text);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    transform 0.15s;
+}
+.vn-title-menu button:hover:not(:disabled),
+.vn-title-menu button:focus-visible {
+  color: var(--vn-accent);
+  transform: translateX(6px);
+  outline: none;
+}
+.vn-title-menu button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.vn-title-menu button.minor {
+  margin-top: 14px;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: var(--vn-text-dim);
+}
+
+.vn-title-pick {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  padding: calc(env(safe-area-inset-top) + 28px) calc(env(safe-area-inset-right) + 28px)
+    calc(env(safe-area-inset-bottom) + 28px) calc(env(safe-area-inset-left) + 28px);
+}
+.vn-title-pick-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.vn-title-pick-head h2 {
+  margin: 0;
+  font-size: 24px;
+}
+.vn-title-pick-head span {
+  font-size: 13px;
+  color: var(--vn-text-dim);
+}
+.vn-title-pick-head .vn-pill {
+  margin-left: auto;
+}
+.vn-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+}
+.vn-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--vn-border);
+  background: rgba(13, 15, 27, 0.6);
+}
+.vn-card.current {
+  border-color: rgba(244, 169, 196, 0.6);
+}
+.vn-card-main {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.vn-card-main img,
+.vn-card-ph {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+}
+.vn-card-ph {
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--vn-text-dim);
+  background: rgba(255, 255, 255, 0.06);
+}
+.vn-card-name {
+  padding: 10px 12px 4px;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vn-card-main:hover .vn-card-name {
+  color: var(--vn-accent);
+}
+.vn-card-resume {
+  align-self: flex-start;
+  margin: 0 8px 10px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--vn-text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.vn-card-resume:hover {
+  color: var(--vn-text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* ══════════ 加载画面:黑场 + 右下角羽毛 ══════════ */
+
+.vn-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  background: #050509;
+  animation: vn-fade-in 0.25s ease both;
+}
+.vn-loading-mark {
+  position: absolute;
+  right: calc(env(safe-area-inset-right) + 28px);
+  bottom: calc(env(safe-area-inset-bottom) + 26px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  letter-spacing: 0.32em;
+}
+.vn-loading-hint {
+  position: absolute;
+  left: calc(env(safe-area-inset-left) + 28px);
+  bottom: calc(env(safe-area-inset-bottom) + 28px);
+  font-size: 12px;
+  color: var(--vn-text-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vn-feather.breathe,
+  .vn-feather.drift,
+  .vn-next,
+  .vn-caret,
+  .vn-slot-thumb.loading {
+    animation: none;
+  }
+}
+
+/* ══════════ 横竖屏适配 ══════════ */
+
+/* 竖屏(手机竖着拿):立绘往下让出菜单的位置,对话框和字号收一点 */
+@media (orientation: portrait) {
+  .vn-root {
+    --vn-sprite-top: 11%;
+    --vn-gutter: 10px;
+  }
+  .vn-box {
+    min-height: 150px;
+    padding: 24px 16px 6px;
+  }
+  .vn-name {
+    left: 14px;
+    font-size: 14px;
+  }
+  .vn-text {
+    font-size: calc(16px * var(--vn-text-scale));
+    line-height: 1.7;
+  }
+}
+
+/* 窄屏:快捷按钮只留历史 / 自动 / 菜单,其余都在菜单里;菜单导航变成顶部一排标签 */
+@media (max-width: 640px) {
+  .vn-quick .wide-only {
+    display: none;
+  }
+  .vn-menu {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .vn-menu-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 4px;
+    padding: calc(env(safe-area-inset-top) + 10px) 12px 10px;
+    border-right: none;
+    border-bottom: 1px solid var(--vn-border);
+    scrollbar-width: none;
+  }
+  .vn-menu-brand,
+  .vn-nav-gap {
+    display: none;
+  }
+  .vn-nav {
+    flex: none;
+    font-size: 15px;
+    padding: 7px 12px;
+  }
+  .vn-nav.back {
+    order: -1;
+    margin-top: 0;
+    padding: 7px 14px;
+  }
+  .vn-nav kbd {
+    display: none;
+  }
+  .vn-menu-head {
+    padding: 14px 16px 8px;
+  }
+  .vn-menu-head h2 {
+    font-size: 18px;
+  }
+  .vn-menu-body {
+    padding: 4px 12px calc(env(safe-area-inset-bottom) + 16px);
+  }
+  .vn-slots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  /* API 设置的标题栏在窄屏上会被挤成竖排:说明文字让位,页头已经写了「模型」 */
+  .vn-model-embed .conn-drawer-sub {
+    display: none;
+  }
+  .vn-set {
+    grid-template-columns: 84px minmax(0, 1fr) 48px;
+    gap: 10px;
+  }
+  .vn-set.wide {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+  .vn-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .vn-title-menu button {
+    font-size: 18px;
+  }
+}
+
+/* 手机横屏:高度是最稀缺的,对话框压扁、菜单变小,把画面让给立绘 */
+@media (orientation: landscape) and (max-height: 520px) {
+  .vn-root {
+    --vn-sprite-top: 3%;
+    --vn-gutter: 8px;
+  }
+  .vn-window {
+    width: min(
+      860px,
+      calc(100% - 2 * var(--vn-gutter) - env(safe-area-inset-left) - env(safe-area-inset-right))
+    );
+    gap: 6px;
+  }
+  .vn-box {
+    min-height: 96px;
+    padding: 18px 22px 4px;
+    gap: 4px;
+  }
+  .vn-name {
+    top: -13px;
+    padding: 2px 12px;
+    font-size: 13px;
+  }
+  .vn-text {
+    font-size: calc(15px * var(--vn-text-scale));
+    line-height: 1.6;
+  }
+  .vn-quick button {
+    padding: 2px 6px;
+  }
+  .vn-input textarea {
+    padding: 7px 14px;
+  }
+  .vn-send {
+    height: 38px;
+  }
+  .vn-topbar {
+    top: calc(env(safe-area-inset-top) + 6px);
+  }
+  .vn-menu {
+    grid-template-columns: 168px minmax(0, 1fr);
+  }
+  .vn-nav {
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+  .vn-menu-brand {
+    padding-bottom: 8px;
+  }
+}
+
+/* ---- 语音 ---- */
+
+/* 等语音时对话框里的小省略号 */
+.vn-voice-wait {
+  display: inline-block;
+  margin-left: 2px;
+  letter-spacing: 2px;
+  opacity: 0.55;
+  animation: vn-voice-wait 1.2s ease-in-out infinite;
+}
+@keyframes vn-voice-wait {
+  50% {
+    opacity: 0.2;
+  }
+}
+/* 不等语音时,文字后面的小圈:语音还在合成 */
+.vn-voice-spin {
+  display: inline-block;
+  width: 0.72em;
+  height: 0.72em;
+  margin-left: 8px;
+  vertical-align: -0.04em;
+  border: 2px solid rgba(246, 243, 248, 0.25);
+  border-top-color: var(--vn-accent);
+  border-radius: 50%;
+  animation: vn-voice-spin 0.8s linear infinite;
+}
+@keyframes vn-voice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vn-voice-wait {
+    animation: none;
+  }
+  /* 不转也要看得出来:留一个半透明的圈 */
+  .vn-voice-spin {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* 顶栏本身不接点击(不挡立绘),只有这个提示能点 */
+.vn-chip.warn {
+  pointer-events: auto;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: #ffd7a8;
+  border-color: rgba(255, 170, 90, 0.55);
+}
+
+/* 一句语音的两颗小按钮(重播 / 重新生成):对话框底边最左,历史里每句末尾 */
+.vn-voice-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  cursor: default;
+}
+.vn-voice-ctl button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--vn-text-dim);
+  cursor: pointer;
+}
+.vn-voice-ctl button:hover:not(:disabled) {
+  color: var(--vn-text);
+  background: rgba(255, 255, 255, 0.08);
+}
+.vn-voice-ctl button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.vn-voice-ctl.speaking button:first-child {
+  color: var(--vn-accent);
+}
+.vn-voice-ctl.speaking .w1,
+.vn-voice-ctl.speaking .w2 {
+  animation: vn-voice-wave 1s ease-in-out infinite;
+}
+.vn-voice-ctl.speaking .w2 {
+  animation-delay: 0.25s;
+}
+@keyframes vn-voice-wave {
+  50% {
+    opacity: 0.25;
+  }
+}
+.vn-voice-ctl.busy button:first-child {
+  animation: vn-voice-wait 1.2s ease-in-out infinite;
+}
+.vn-voice-ctl.error button:first-child {
+  color: #ffb38a;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vn-voice-ctl .w1,
+  .vn-voice-ctl .w2,
+  .vn-voice-ctl.busy button:first-child {
+    animation: none;
+  }
+}
+/* 对话框里:挤在快捷按钮那一排的最左边 */
+.vn-quick .vn-voice-ctl.lead {
+  margin-right: auto;
+}
+
+/* 历史:AI 回复按画面上的句子一句一句列 */
+.vn-log-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vn-log-line {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 -8px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.vn-log-line:hover,
+.vn-log-line.picked {
+  background: rgba(255, 255, 255, 0.06);
+}
+/* 这句的操作(回到这里 / 语音详情):鼠标移上去、手机上点一下这句、用键盘移到这句时露出来。
+   浮在右上角,不挤正文 */
+.vn-log-acts {
+  position: absolute;
+  top: -12px;
+  right: 6px;
+  z-index: 1;
+  display: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--vn-border);
+  background: var(--vn-glass-strong);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.vn-log-line:hover .vn-log-acts,
+.vn-log-line.picked .vn-log-acts,
+.vn-log-line:focus-visible .vn-log-acts,
+.vn-log-acts:focus-within {
+  display: flex;
+}
+.vn-log-acts button {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vn-text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vn-log-acts button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.vn-log-acts button.on {
+  color: var(--vn-accent);
+}
+.vn-log-line:focus-visible {
+  outline: 2px solid var(--vn-accent);
+  outline-offset: -2px;
+}
+.vn-log-line.current {
+  background: rgba(244, 169, 196, 0.1);
+  box-shadow: inset 2px 0 0 var(--vn-accent);
+}
+.vn-log-text {
+  flex: 1;
+  min-width: 0;
+}
+.vn-log-line.narration .vn-log-text {
+  color: var(--vn-narration);
+}
+.vn-log-line.player .vn-log-speaker {
+  color: var(--vn-user);
+}
+.vn-log-line.open {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* 历史里一句的语音详情(开着「语音详情」时点一句展开):排查语音用,字可以选中复制 */
+.vn-vd {
+  margin: 2px 0 10px;
+  padding: 10px 14px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--vn-border);
+  background: rgba(8, 9, 17, 0.55);
+  font-size: 13px;
+  line-height: 1.6;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: auto;
+}
+.vn-vd-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 3px 14px;
+}
+.vn-vd-row {
+  display: contents;
+}
+.vn-vd-row dt {
+  color: var(--vn-text-dim);
+  white-space: nowrap;
+}
+.vn-vd-row dd {
+  margin: 0;
+  word-break: break-word;
+}
+.vn-vd-raw {
+  margin-top: 8px;
+}
+.vn-vd-raw summary {
+  cursor: pointer;
+  color: var(--vn-text-dim);
+}
+.vn-vd-raw pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  font-family: var(--vn-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.vn-vd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+/* 手机上两栏太挤:名字一行、内容一行 */
+@media (max-width: 480px) {
+  .vn-vd-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .vn-vd-row dd {
+    margin-bottom: 4px;
+  }
+}
+.vn-log-speaker {
+  margin-right: 6px;
+  font-weight: 700;
+  color: var(--vn-accent);
+}
+/* 历史里每句上方的日语 */
+.vn-log-ja {
+  display: block;
+  font-size: 0.8em;
+  color: var(--vn-text-dim);
+}
+.vn-log-line .vn-voice-ctl {
+  flex: none;
+  opacity: 0.7;
+}
+.vn-log-line:hover .vn-voice-ctl,
+.vn-log-line .vn-voice-ctl.speaking,
+.vn-log-line .vn-voice-ctl.busy {
+  opacity: 1;
+}

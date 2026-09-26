@@ -1,0 +1,29 @@
+# 构建上下文是仓库根,不排掉这些的话 .venv 和 node_modules 会让
+# 每次 build 都先传几百 MB。.venv 尤其危险 —— 那是 Windows 的虚拟环境,
+# 拷进 linux 镜像纯属添乱
+**/node_modules
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+
+.git
+.gitignore
+.claude
+.playwright-mcp
+
+# 前端产物在镜像里现构建,宿主机上那份别混进去
+frontend/dist
+
+# 本机的库和密钥不上服务器
+AnimaBackend/data
+# 情绪识别模型镜像里现下载,本机那份不用传
+AnimaBackend/models
+**/.env
+**/.env.local
+deploy/htpasswd
+
+docs
+README.md
+start.bat

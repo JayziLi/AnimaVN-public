@@ -1,0 +1,46 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    environment:
+      # 写死绝对路径。config.py 里的默认值是相对 app/ 的位置算出来的,
+      # 而镜像里 app 包同时存在于 /app/app 和 site-packages,
+      # 谁先被 import 会决定 DB 落在哪 —— 显式指定就没这个悬念了。
+      # sqlite 的绝对路径要四道斜杠:sqlite:// + /app/data/...
+      DATABASE_URL: sqlite:////app/data/animabackend.db
+      # 同源部署,浏览器不做跨域预检,这里可以是空的。
+      # 要拿本机 vite dev 连这台服务器的话,填 '["http://localhost:5173"]'
+      CORS_ORIGINS: '[]'
+      # 关掉 config.py 里给局域网联调开的私有网段放行
+      CORS_ORIGIN_REGEX: ''
+      # 只在第一次启动、库还是空的时候用来种默认连接。
+      # 之后连接存在库里,改密钥去网页的设置页,不用重开容器。
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+    volumes:
+      # 卡、预设、对话、连接全在这个 sqlite 文件里。
+      # 不挂出来的话每次 docker compose up --build 都是一张白纸
+      - anima-data:/app/data
+    # 故意不写 ports:后端只在 compose 内网可见,公网只能通过 nginx 进来
+    expose:
+      - "8000"
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    volumes:
+      # 必须先生成这个文件再 up。文件不存在的话 docker 会替你建一个同名
+      # 目录,nginx 拿目录当密码文件读 → 整站 500
+      - ./deploy/htpasswd:/etc/nginx/htpasswd:ro
+
+volumes:
+  anima-data:

@@ -1,0 +1,5763 @@
+:root {
+  /* 中性灰阶主题:不用色相,靠明度拉开信息层级。
+     只有 --danger 是例外 —— 删除确认和请求失败保留暗红,否则这类状态完全看不出来。 */
+  --bg: #0e0e0e;
+  --bg-panel: #171717;
+  --bg-raised: #212121;
+  --bg-hover: #2d2d2d;
+  --border: #303030;
+  --border-strong: #4a4a4a;
+
+  --text: #ededed;
+  /* 提示词正文这类要长时间盯着看的长文本,单独一档,比 dim 亮 */
+  --text-body: #c8c8c8;
+  --text-dim: #a3a3a3;
+  --text-faint: #7d7d7d;
+
+  --accent: #e8e8e8;
+  --accent-dim: #3d3d3d;
+
+  /* 角色靠明度区分:system 最沉,assistant 最亮 */
+  --role-system: #8f8f8f;
+  --role-user: #c4c4c4;
+  --role-assistant: #f0f0f0;
+
+  --warn: #ffffff;
+  --danger: #f87171;
+
+  /* 顶栏高度。移动端的全屏抽屉从这条下沿开始,两边得共用同一个数 */
+  --topbar-h: 52px;
+
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4d4d4d;
+}
+
+/* ══════════ 骨架 ══════════ */
+
+.console {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  overflow: hidden;
+}
+
+.console-body {
+  display: grid;
+  grid-template-columns: var(--left, 330px) 5px minmax(0, 1fr) 5px var(--right, 350px);
+  min-height: 0;
+}
+
+.console-body.left-collapsed {
+  --left: 44px;
+}
+.console-body.right-collapsed {
+  --right: 44px;
+}
+
+/* ══════════ 三栏拖拽调宽 ══════════ */
+
+.col-resizer {
+  position: relative;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.12s;
+  touch-action: none;
+}
+/* 加宽命中区域,免得难点中 */
+.col-resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 -4px;
+}
+.col-resizer:hover,
+.col-resizer.dragging {
+  background: var(--accent-dim);
+}
+.col-resizer.disabled {
+  pointer-events: none;
+}
+
+body.dragging-columns {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* ══════════ 顶栏 ══════════ */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  height: var(--topbar-h);
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-right: 6px;
+  margin-right: 2px;
+  border-right: 1px solid var(--border);
+  height: 100%;
+  align-content: center;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.topbar-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+.topbar-title-compact {
+  display: none;
+}
+
+.topbar-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding-right: 10px;
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+.topbar-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topbar-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* 顶栏最右侧:API 连接入口 —— 唯一入口,点开在下方展开抽屉 */
+.topbar-api-btn {
+  margin-left: 4px;
+}
+.topbar-api-btn.active {
+  border-color: var(--accent-dim);
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.icon-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* ══════════ 通用控件 ══════════ */
+
+.btn {
+  /* inline-flex 而不是默认的 block:带图标的按钮(图标 + 文字两个子元素)
+     在 block 下会摞成两行 —— 「新对话」那颗就是这么变成两层的 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 12px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn.accent {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+.btn.accent:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+.btn.small {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+.btn.danger {
+  border-color: #46242a;
+  color: var(--danger);
+}
+.btn.danger:hover:not(:disabled) {
+  background: #2a1418;
+  border-color: #5c2e35;
+  color: #f2b8b8;
+}
+.btn.danger.armed {
+  background: #2a1418;
+  border-color: var(--danger);
+}
+
+/* 转圈圈:连接/测试/刷新等耗时动作的按钮里 */
+.spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -1px;
+  margin-right: 5px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 单独立着转(不跟文字)的时候不要右边距,否则图标按钮里会偏 */
+.spinner.bare {
+  margin-right: 0;
+}
+.spinner.tiny {
+  width: 9px;
+  height: 9px;
+  border-width: 1.5px;
+  margin-right: 0;
+}
+
+/* 开机遮罩:盖住「预设→卡→最近对话」这段串行加载 */
+.boot-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--bg);
+  animation: boot-in 0.15s ease-out;
+}
+@keyframes boot-in {
+  from {
+    opacity: 0;
+  }
+}
+.boot-mark {
+  font-size: 26px;
+  color: var(--text-dim);
+}
+.boot-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+}
+.boot-line {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* 导入/导出遮罩:半透明压一层,中间一张小卡说明在忙什么。
+   比开机那层轻 —— 这些动作大多一两秒就完,不该整屏接管 */
+.op-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  animation: boot-in 0.12s ease-out;
+}
+.op-veil-card {
+  display: flex;
+  align-items: center;
+  padding: 14px 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  font-size: 13px;
+  color: var(--text);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+}
+
+/* 切对话时旧内容还在,顶上飘一条 —— 不清屏,免得闪 */
+.chat-loading-pill {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  width: fit-content;
+  margin: 0 auto 10px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  margin-right: 5px;
+  vertical-align: 0.5px;
+}
+.dot.on {
+  background: var(--text);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.55);
+}
+
+.select,
+.text-input {
+  padding: 5px 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-size: 12px;
+  max-width: 220px;
+}
+.select:focus,
+.text-input:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+/* ══════════ 面板 ══════════ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-panel);
+}
+
+.panel.left {
+  border-right: 1px solid var(--border);
+}
+.panel.right {
+  border-left: 1px solid var(--border);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.panel-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.panel-collapse {
+  padding: 2px 5px;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+}
+.panel-collapse:hover {
+  color: var(--text);
+}
+
+.panel-rail {
+  writing-mode: vertical-rl;
+  padding: 14px 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  cursor: pointer;
+  user-select: none;
+}
+.panel-rail:hover {
+  color: var(--text);
+}
+
+.panel-empty {
+  padding: 28px 18px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+/* ══════════ 左栏:预设 + 分支树上下叠 ══════════ */
+
+.left-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.left-col > .panel.left {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ── 左栏底部:当前对话名 + 对话历史的入口 ──
+   这里只显示选了哪张对话,不再是下拉 —— 换对话得点旁边的按钮进历史面板选。
+   面板本身还是盖在聊天区上,不跟预设抢左栏的高度。
+   预设一长就把分支树挤没了,这是当年挪走的原因 */
+
+.history-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.chat-current {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.history-trigger {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.history-trigger:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.history-trigger.open {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* ══════════ 对话历史(盖住聊天区展开) ══════════ */
+
+.chat-history {
+  position: absolute;
+  inset: 0;
+  /* 盖过连接抽屉的 20 —— 两层都开着时历史在上面 */
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  animation: drawer-in 0.16s ease-out;
+}
+
+.chat-history-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.chat-history-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.chat-history-search {
+  width: 170px;
+  padding: 4px 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+}
+.chat-history-search:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+.chat-history-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── 一行对话:名字 / 条数 / 时间 + 最后一条消息的预览 ── */
+
+.chat-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.chat-row:hover {
+  background: var(--bg-hover);
+}
+.chat-row:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: -1px;
+}
+.chat-row.current {
+  background: var(--accent-dim);
+}
+
+.chat-row-flag {
+  flex-shrink: 0;
+  width: 14px;
+  padding-top: 2px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.chat-row.current .chat-row-flag {
+  color: var(--accent);
+}
+
+.chat-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.chat-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-row.current .chat-row-name {
+  color: var(--accent);
+}
+
+.chat-row-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+.chat-row-rename:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+.chat-row-orphan {
+  flex-shrink: 0;
+  font-size: 9px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-faint);
+}
+
+.chat-row-meta {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.chat-row-preview {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  /* 两行封顶 —— 再长就成了一屏一条,列表就没法扫了 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.chat-row-blank {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* 行内动作:平时藏着,hover / 键盘聚焦 / 删除已亮起 / 正在跑 才露出来 */
+.chat-row-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.chat-row:hover .chat-row-actions,
+.chat-row:focus-within .chat-row-actions,
+.chat-row-actions.show {
+  opacity: 1;
+}
+
+.icon-btn.danger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+/* 亮起的删除键要放得下「确认?」,不能再是 22px 的方块 */
+.icon-btn.armed {
+  width: auto;
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ══════════ 预设块列表 ══════════ */
+
+/* ══════════ 预设工具条(对齐酒馆:两行、全图标平铺) ══════════ */
+
+.icon-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.icon-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.icon-btn.accent {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.icon-btn.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+/* 块行内的编辑按钮,比工具条的小一号 */
+.icon-btn.tiny {
+  width: 17px;
+  height: 17px;
+  font-size: 10px;
+  border-color: transparent;
+  background: transparent;
+}
+.icon-btn.tiny:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--bg-raised);
+}
+
+.icon-btn svg {
+  pointer-events: none;
+}
+
+.preset-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.preset-menu-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 55;
+  display: grid;
+  width: 178px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.48);
+}
+
+.preset-menu-pop button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: left;
+}
+.preset-menu-pop button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.preset-menu-pop button.danger {
+  color: var(--danger);
+}
+.preset-menu-pop button.danger:hover:not(:disabled) {
+  background: #2a1418;
+}
+.preset-menu-pop button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.preset-menu-sep {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--border);
+}
+
+.dirty-dot {
+  color: var(--warn);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.preset-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.preset-select {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+
+/* 列表表头:名称 / Token 两列,酒馆也有这一行 */
+.block-header {
+  display: flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.block-header-name {
+  flex: 1;
+}
+
+.block-header-count {
+  margin-left: 6px;
+  opacity: 0.75;
+  text-transform: none;
+}
+
+.block-header-token {
+  flex-shrink: 0;
+}
+
+.block-edit-hint {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.order-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.block-row {
+  border-bottom: 1px solid #242424;
+}
+
+.block-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.block-head:hover {
+  background: var(--bg-hover);
+}
+
+.block-row.off .block-head {
+  opacity: 0.4;
+}
+
+/* 开关做成滑块,和酒馆提示词管理器的 toggle 一致 */
+.block-toggle {
+  flex-shrink: 0;
+  position: relative;
+  width: 24px;
+  height: 13px;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  transition: background 0.12s, border-color 0.12s;
+}
+.block-toggle .knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transition: transform 0.12s, background 0.12s;
+}
+.block-toggle.on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+.block-toggle.on .knob {
+  background: var(--accent);
+  transform: translateX(11px);
+}
+
+.block-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.block-badge {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  opacity: 0.8;
+}
+.badge-marker {
+  color: var(--accent);
+}
+.badge-system {
+  color: var(--role-system);
+}
+.badge-user {
+  color: var(--role-user);
+}
+.badge-assistant {
+  color: var(--role-assistant);
+}
+.badge-missing {
+  color: var(--danger);
+}
+/* 插件块:正文由插件决定,左栏只能开关、排序。和普通块区分开:
+   左边一道竖线 + 略亮的底,徽标用虚线框(主题纯灰阶,不引色相) */
+.block-row.plugin .block-head {
+  box-shadow: inset 2px 0 0 var(--accent);
+  background: var(--bg-raised);
+}
+.block-row.plugin .block-head:hover {
+  background: var(--bg-hover);
+}
+.badge-plugin {
+  color: var(--accent);
+  border-style: dashed;
+  font-family: inherit;
+  letter-spacing: 0;
+}
+/* 被角色卡顶替:主题是纯灰阶不引色相,改用反相实心块抓注意力 */
+.badge-override {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  opacity: 1;
+}
+
+.block-tokens {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  min-width: 30px;
+  text-align: right;
+}
+
+/* ══════════ 中间:对话 ══════════ */
+
+/* 中间列的包裹层:让 API 连接抽屉只在聊天区宽度内下拉,不遮住左右两栏 */
+.chat-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 8px;
+  min-height: 0;
+}
+
+.chat-empty {
+  height: 100%;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  color: var(--text-faint);
+  gap: 6px;
+  line-height: 1.9;
+}
+
+.chat-empty-mark {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--border-strong);
+}
+
+.chat-msg {
+  max-width: var(--chat-width, 760px);
+  margin: 0 auto 16px;
+  /* 头像一列 + 正文一列;头像顶对齐,长消息不会把它拖到中间 */
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.chat-msg-body {
+  flex: 1;
+  min-width: 0;
+  /* 松手后弹回原位。横滑跟手的那一刻由 .swiping 关掉,否则拖着是滞后的 */
+  transition: transform 0.18s ease-out;
+}
+.chat-msg-body.swiping {
+  transition: none;
+}
+
+/* 可横滑翻分支的那条消息(末尾那条)。
+   pan-y 把竖向留给页面滚动、横向交给我们的手势 —— 不写这行,浏览器会先
+   认定这是一次滚动,然后给我们发 pointercancel,手势就永远凑不满阈值。
+   pinch-zoom 留着,不然在手机上双指放大这条消息会失灵。 */
+.chat-msg.swipeable {
+  touch-action: pan-y pinch-zoom;
+}
+
+/* 头像大小与形状都在设置里调(默认 36px 圆角,和人设列表/卡面板同一规格);
+   名字行 20px 高,往下挪 2px 才和它齐平 */
+.chat-avatar {
+  width: var(--avatar-size, 36px);
+  height: var(--avatar-size, 36px);
+  margin-top: 2px;
+  object-fit: cover;
+  border-radius: var(--avatar-radius, 5px);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  flex-shrink: 0;
+}
+
+.chat-msg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+/* 昵称和元信息跟着正文一起缩放 —— 只放大正文会让整块比例失衡,
+   头像、昵称还钉在原地,叙述文字反而显得更小。酒馆把 --fontScale 挂在
+   body 上就是这个道理 */
+.chat-who {
+  font-size: calc(12px * var(--chat-scale, 1));
+  font-weight: 600;
+}
+.chat-msg.user .chat-who {
+  color: var(--role-user);
+}
+.chat-msg.assistant .chat-who {
+  color: var(--role-assistant);
+}
+
+.chat-meta {
+  font-family: var(--mono);
+  font-size: calc(10px * var(--chat-scale, 1));
+  color: var(--text-faint);
+}
+
+.chat-msg-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.chat-msg:hover .chat-msg-actions {
+  opacity: 1;
+}
+
+.chat-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  /* 字号和行距由设置抽屉控制,变量挂在 .panel.chat 上(见 ChatPanel) */
+  font-size: calc(13px * var(--chat-scale, 1));
+  line-height: var(--chat-line, 1.7);
+}
+.chat-msg.user .chat-text {
+  background: var(--bg-raised);
+  border-color: var(--border-strong);
+}
+
+/* 引号里的内容 —— 主题本来不用色相,这是继 --danger 之后第二处破例:
+   「谁在说话」和「在叙述」靠明度分不开,只能上色 */
+.chat-quote {
+  color: var(--quote, #d8a657);
+}
+
+/* ══════════ 排版方案 ══════════
+   五套摆法,由 .panel.chat 上的 data-layout 选。上面那份是 bubble(默认),
+   下面每一块只写和它的差量 —— ChatPanel 的渲染逻辑对此一无所知 */
+
+/* ── 对向:你的话靠右、角色靠左,气泡贴合内容 ── */
+
+.chat[data-layout='duo'] .chat-msg-body {
+  /* 不再撑满:短句就是短气泡,这是 IM 感的来源。
+     上限跟着消息列宽走,换宽度档时气泡比例不变 */
+  flex: 0 1 auto;
+  max-width: min(100%, calc(var(--chat-width, 760px) * 0.74));
+}
+.chat[data-layout='duo'] .chat-msg.user {
+  flex-direction: row-reverse;
+}
+.chat[data-layout='duo'] .chat-msg.user .chat-msg-head {
+  flex-direction: row-reverse;
+}
+/* 头部反向后,原本靠 margin-left:auto 推到右边的动作区要改推左边 */
+.chat[data-layout='duo'] .chat-msg.user .chat-msg-actions {
+  margin-left: 0;
+  margin-right: auto;
+}
+/* 朝向说话人的那个角削平,气泡就有了指向 */
+.chat[data-layout='duo'] .chat-msg.user .chat-text {
+  border-top-right-radius: 2px;
+}
+.chat[data-layout='duo'] .chat-msg.assistant .chat-text {
+  border-top-left-radius: 2px;
+}
+/* 编辑时要能看清整段文字,这一条临时恢复满宽 */
+.chat[data-layout='duo'] .chat-msg.editing .chat-msg-body {
+  flex: 1;
+  max-width: none;
+}
+
+/* ── 文档:没有头像也没有框,靠留白和一条淡线断句 ── */
+
+.chat[data-layout='document'] .chat-avatar {
+  display: none;
+}
+.chat[data-layout='document'] .chat-msg {
+  max-width: 720px;
+  margin-bottom: 0;
+  padding: 16px 0 20px;
+  border-bottom: 1px solid #1f1f1f;
+}
+.chat[data-layout='document'] .chat-msg-wrap:last-child .chat-msg {
+  border-bottom: none;
+}
+.chat[data-layout='document'] .chat-msg-head {
+  margin-bottom: 7px;
+}
+.chat[data-layout='document'] .chat-who {
+  font-size: calc(11px * var(--chat-scale, 1));
+  letter-spacing: 0.08em;
+}
+.chat[data-layout='document'] .chat-text {
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 0;
+}
+.chat[data-layout='document'] .chat-msg.user .chat-text {
+  background: none;
+}
+
+/* ── 紧凑:小头像、四周收紧,一屏塞更多条 ── */
+
+.chat[data-layout='compact'] .chat-msg {
+  margin-bottom: 7px;
+  gap: 8px;
+}
+/* 相对设置里的头像大小再收一档,而不是写死 24px ——
+   把头像调大了之后,紧凑排版也该跟着变大,只是仍比其他排版小一圈 */
+.chat[data-layout='compact'] .chat-avatar {
+  width: calc(var(--avatar-size, 36px) * 0.7);
+  height: calc(var(--avatar-size, 36px) * 0.7);
+  margin-top: 1px;
+}
+.chat[data-layout='compact'] .chat-msg-head {
+  margin-bottom: 2px;
+}
+.chat[data-layout='compact'] .chat-who {
+  font-size: calc(11px * var(--chat-scale, 1));
+}
+.chat[data-layout='compact'] .chat-text {
+  padding: 5px 9px;
+  border-radius: 5px;
+}
+
+/* ── 剧本:名牌 + 缩进正文,像一份分镜稿 ── */
+
+.chat[data-layout='script'] .chat-avatar {
+  display: none;
+}
+.chat[data-layout='script'] .chat-msg {
+  max-width: 680px;
+  margin-bottom: 22px;
+}
+.chat[data-layout='script'] .chat-msg-head {
+  margin-bottom: 7px;
+}
+.chat[data-layout='script'] .chat-who {
+  font-family: var(--mono);
+  font-size: calc(10px * var(--chat-scale, 1));
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.chat[data-layout='script'] .chat-text {
+  padding: 1px 0 1px 15px;
+  border: none;
+  border-left: 2px solid var(--border-strong);
+  border-radius: 0;
+  background: none;
+}
+/* 角色那一侧的竖线亮一档 —— 一眼看出这段是谁的戏。不用纯白:
+   2px 的满亮竖线在长对话里比正文还抢眼 */
+.chat[data-layout='script'] .chat-msg.assistant .chat-text {
+  border-left-color: var(--text-dim);
+}
+
+.chat-pending {
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+
+.chat-error {
+  max-width: var(--chat-width, 760px);
+  margin: 0 auto 16px;
+  padding: 9px 12px;
+  border: 1px solid #46242a;
+  border-left: 2px solid var(--danger);
+  border-radius: 4px;
+  background: #170e10;
+  color: #f2b8b8;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.composer {
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  padding: 10px 20px 12px;
+  flex-shrink: 0;
+}
+
+.composer-inner {
+  /* 跟着消息列一起变宽变窄,输入框和上方消息始终对齐同一条中轴 */
+  max-width: var(--chat-width, 760px);
+  margin: 0 auto;
+  /* 给「回到最新」一个不随内容滚动的锚点:它悬在输入区上方 */
+  position: relative;
+}
+
+.composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.composer-stat {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.composer-stat.warn {
+  color: var(--warn);
+  border-color: var(--border-strong);
+}
+
+.composer-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.composer-input {
+  flex: 1;
+  /* 单行高度作下限;上限给手动拉高用 —— 没手动调过时 JS 自动长高仍封在 180px */
+  min-height: 40px;
+  max-height: 40vh;
+  padding: 9px 11px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  /* 拖过一次把手,JS 自动长高就让位(见 ChatPanel 的 manualResizeRef) */
+  resize: vertical;
+  font-family: inherit;
+  /* 跟着正文一起缩放:打字和读回来应该是同一个字号 */
+  font-size: calc(13px * var(--chat-scale, 1));
+  line-height: 1.5;
+}
+.composer-input:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+/* ══════════ 右侧:角色卡 ══════════ */
+
+.card-hero {
+  display: flex;
+  gap: 11px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 5px;
+  object-fit: cover;
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+.card-avatar.placeholder {
+  display: grid;
+  place-items: center;
+  background: var(--bg-raised);
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.card-hero-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  justify-content: center;
+}
+
+.card-spec {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.card-tag {
+  font-size: 10px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+}
+
+.field-row {
+  border-bottom: 1px solid #242424;
+}
+
+.field-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.field-head:hover {
+  background: var(--bg-hover);
+}
+
+.field-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-row.empty .field-name {
+  color: var(--text-faint);
+}
+
+.field-empty-mark {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+
+.field-content {
+  padding: 6px 12px 12px;
+  background: var(--bg);
+  border-top: 1px solid #242424;
+}
+
+.field-content pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ══════════ 角色卡:可编辑字段 ══════════ */
+
+.save-state {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.save-state.saved {
+  color: var(--accent);
+}
+
+.card-avatar-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  line-height: 0;
+  flex-shrink: 0;
+  border-radius: 5px;
+}
+.card-avatar-btn:hover .card-avatar {
+  border-color: var(--accent);
+}
+
+.card-name-input {
+  width: 100%;
+  padding: 2px 4px;
+  margin-left: -4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.card-name-input:hover {
+  border-color: var(--border);
+}
+.card-name-input:focus {
+  outline: none;
+  background: var(--bg-raised);
+  border-color: var(--accent-dim);
+}
+
+/* ── 角色列表:盖在编辑器上的选择视图,对齐酒馆的 .character_select 行 ──
+   (头像 + 名字 + 创作者注释,整行可点;当前卡左缘一道亮条) */
+
+.bar-current-name {
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.char-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 12px;
+  text-align: left;
+  border-bottom: 1px solid #242424;
+}
+.char-row:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.char-row.active {
+  background: var(--bg-raised);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.char-row-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 5px;
+  object-fit: cover;
+  border: 1px solid var(--border-strong);
+  flex-shrink: 0;
+  background: var(--bg-raised);
+}
+
+.char-row-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.char-row-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.char-row-notes {
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-field {
+  padding: 10px 12px;
+  border-bottom: 1px solid #242424;
+}
+
+/* 角色卡编辑器的字段区:竖向 flex,让「角色描述」的框撑满剩余空白 */
+.card-fields {
+  display: flex;
+  flex-direction: column;
+}
+.card-field.grow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+/* 撑满的描述框不再需要手动拖大小 */
+.card-field.grow .card-textarea {
+  flex: 1;
+  resize: none;
+}
+
+/* 面板底部的「高级设置」入口:常驻可见,不跟着面板内容滚走 */
+.card-adv-btn {
+  flex-shrink: 0;
+  margin: 10px 12px 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: color 0.12s, border-color 0.12s;
+}
+.card-adv-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent-dim);
+}
+.card-adv-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.card-adv-btn .card-adv-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.card-field-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.card-field-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
+}
+
+.card-field-token {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.card-textarea {
+  width: 100%;
+  min-height: 70px;
+  padding: 8px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.card-textarea.tall {
+  min-height: 150px;
+}
+.card-textarea:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+.card-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.greeting-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.greeting-index {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  min-width: 26px;
+  text-align: center;
+}
+
+.btn.small.danger {
+  border-color: #46242a;
+  color: var(--danger);
+}
+
+/* ══════════ 角色卡完整编辑抽屉 ══════════ */
+
+.ce-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.66);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 60;
+}
+
+.ce-drawer {
+  width: min(1020px, 96vw);
+  height: 100%;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  animation: slide-in 0.16s ease-out;
+}
+
+.ce-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ce-avatar-btn {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.ce-avatar {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  display: block;
+}
+.ce-avatar.placeholder {
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  background: var(--bg-raised);
+}
+
+.ce-name-input {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 8px;
+  min-width: 120px;
+  max-width: 300px;
+}
+.ce-name-input:hover {
+  border-color: var(--border);
+}
+.ce-name-input:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+  background: var(--bg-raised);
+}
+
+.ce-head-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+
+.ce-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.ce-nav {
+  width: 196px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ce-nav-group {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding: 8px 8px 4px;
+}
+.ce-nav-group:first-child {
+  padding-top: 0;
+}
+
+.ce-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: left;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.ce-nav-item:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.ce-nav-item.active {
+  background: var(--bg-raised);
+  color: var(--accent);
+}
+
+.ce-nav-seq {
+  font-family: var(--mono);
+  font-size: 10px;
+  width: 26px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.ce-nav-seq.empty {
+  color: var(--text-faint);
+}
+.ce-nav-seq.muted {
+  color: var(--text-faint);
+  text-align: center;
+}
+.ce-nav-seq.disabled,
+.ce-nav-seq.missing,
+.ce-nav-seq.forbidden,
+.ce-nav-seq.unknown {
+  color: var(--danger, #e06c75);
+}
+
+.ce-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ce-nav-token {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.ce-nav-token.disabled,
+.ce-nav-token.missing,
+.ce-nav-token.forbidden {
+  color: var(--danger, #e06c75);
+}
+.ce-nav-token.muted {
+  color: var(--text-faint);
+}
+
+.ce-nav-foot {
+  margin-top: auto;
+  padding: 12px 8px 2px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.8;
+}
+.ce-nav-foot b {
+  color: var(--text);
+}
+.ce-nav-warn {
+  color: var(--danger, #e06c75);
+}
+
+.ce-body {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
+  padding: 16px 20px 40px;
+  scroll-padding-top: 12px;
+}
+
+.ce-section {
+  margin-bottom: 26px;
+  scroll-margin-top: 12px;
+}
+
+.ce-sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.ce-seq {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.ce-seq.muted {
+  color: var(--text-faint);
+}
+.ce-seq.disabled,
+.ce-seq.missing,
+.ce-seq.forbidden,
+.ce-seq.unknown {
+  color: var(--danger, #e06c75);
+}
+
+.ce-sec-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ce-sec-target {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.ce-sec-token {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.ce-sec-hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.ce-sec-warn {
+  font-size: 11px;
+  color: var(--danger, #e06c75);
+  border: 1px solid var(--danger, #e06c75);
+  border-left-width: 3px;
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: rgba(224, 108, 117, 0.06);
+}
+
+.ce-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.ce-textarea:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+/* 不会发出去的字段,框子也标红 */
+.ce-section.disabled .ce-textarea,
+.ce-section.missing .ce-textarea,
+.ce-section.forbidden .ce-textarea {
+  border-color: var(--danger, #e06c75);
+}
+
+.ce-sec-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.ce-wrap {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+
+.ce-preview-toggle {
+  font-size: 11px;
+  color: var(--text-faint);
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.ce-preview-toggle:hover:not(:disabled) {
+  color: var(--accent);
+}
+.ce-preview-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ce-preview {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-dim);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ce-preview-role {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.ce-preview-body {
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.ce-divider {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin: 34px 0 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.ce-divider span {
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.ce-meta-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.ce-inline-field {
+  display: block;
+  margin-bottom: 10px;
+}
+.ce-inline-field > span {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.ce-book {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ce-book-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.ce-book-row:last-child {
+  border-bottom: none;
+}
+.ce-book-row.off {
+  opacity: 0.45;
+}
+
+.ce-book-order {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  width: 22px;
+  flex-shrink: 0;
+}
+
+.ce-book-keys {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ce-book-token {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+/* ══════════ 抽屉右缘:竖版 token 明细条 ══════════ */
+
+/* 收起时的竖排小条,点开向右展开面板 */
+.ce-tok-toggle {
+  width: 26px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  writing-mode: vertical-rl;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--text-faint);
+}
+.ce-tok-toggle:hover {
+  color: var(--accent);
+  background: var(--bg-raised);
+}
+.ce-tok-toggle.active {
+  color: var(--accent);
+}
+
+.ce-tok-panel {
+  width: 224px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+}
+
+.ce-tok-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ce-tok-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+.ce-tok-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-left: auto;
+}
+
+.ce-tok-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+}
+
+/* 竖条本体:0 在顶,向下堆叠;预算线横贯 */
+.ce-tok-bar {
+  position: relative;
+  width: 30px;
+  flex-shrink: 0;
+  align-self: stretch;
+  min-height: 200px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.ce-tok-seg {
+  width: 100%;
+  flex-shrink: 0;
+}
+.ce-tok-seg.preset {
+  background: var(--seg-preset);
+}
+.ce-tok-seg.persona {
+  background: var(--seg-persona);
+}
+.ce-tok-seg.card {
+  background: var(--seg-card);
+}
+.ce-tok-seg.examples {
+  background: var(--seg-examples);
+}
+.ce-tok-seg.worldInfo {
+  background: var(--seg-worldinfo);
+}
+.ce-tok-seg.history {
+  background: var(--seg-history);
+}
+/* 固定开销超预算:固定各段转红,历史本就一条都进不来 */
+.ce-tok-bar.overflow .ce-tok-seg:not(.history) {
+  background: var(--danger);
+}
+
+.ce-tok-tick,
+.ce-tok-limit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  pointer-events: none;
+}
+.ce-tok-tick {
+  border-top: 1px dashed var(--text-faint);
+}
+.ce-tok-limit {
+  border-top: 2px solid var(--accent);
+}
+
+.ce-tok-legend {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 11px;
+}
+.ce-tok-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.ce-tok-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.ce-tok-swatch.preset {
+  background: var(--seg-preset);
+}
+.ce-tok-swatch.persona {
+  background: var(--seg-persona);
+}
+.ce-tok-swatch.card {
+  background: var(--seg-card);
+}
+.ce-tok-swatch.examples {
+  background: var(--seg-examples);
+}
+.ce-tok-swatch.worldInfo {
+  background: var(--seg-worldinfo);
+}
+.ce-tok-swatch.history {
+  background: var(--seg-history);
+}
+.ce-tok-legend-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+}
+.ce-tok-legend-tokens {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.ce-tok-foot {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.8;
+  flex-shrink: 0;
+}
+.ce-tok-foot b {
+  color: var(--text);
+}
+.ce-tok-dim {
+  color: var(--text-faint);
+}
+.ce-tok-warn {
+  color: var(--danger);
+}
+
+/* ══════════ 完整提示词检视器 ══════════ */
+
+.inspector-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.66);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 50;
+}
+/* 块编辑弹窗也能从视觉小说的菜单里打开:视觉小说是 90,
+   这里要压在它上面,但仍低于全局提示条(100) */
+.block-modal-backdrop {
+  z-index: 95;
+}
+/* 视觉小说开着时,从它菜单里打开的其他弹窗(角色高级定义、看提示词、裁头像)同理 */
+.console.vn-open .ce-backdrop,
+.console.vn-open .inspector-backdrop {
+  z-index: 95;
+}
+
+.inspector {
+  width: min(940px, 92vw);
+  height: 100%;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  animation: slide-in 0.16s ease-out;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+}
+
+.inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.inspector-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.inspector-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 12px 16px 24px;
+}
+
+.inspector-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.inspector-tab {
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--text-faint);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.inspector-tab:hover {
+  color: var(--text-dim);
+}
+.inspector-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.imsg {
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.imsg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.imsg-index {
+  color: var(--text-faint);
+  min-width: 20px;
+}
+
+.imsg-role {
+  padding: 0 5px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  letter-spacing: 0.05em;
+}
+.imsg-role.system {
+  color: var(--role-system);
+}
+.imsg-role.user {
+  color: var(--role-user);
+}
+.imsg-role.assistant {
+  color: var(--role-assistant);
+}
+
+.imsg-source {
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.imsg-kind {
+  color: var(--text-faint);
+}
+
+.imsg-tokens {
+  color: var(--text-faint);
+}
+
+.imsg-body {
+  margin: 0;
+  padding: 9px 11px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.raw-view {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.skip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #242424;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.skip-reason {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.inspector-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.summary-chip {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg);
+}
+.summary-chip b {
+  color: var(--text);
+  font-weight: 600;
+}
+.summary-chip.warn {
+  color: var(--warn);
+  border-color: var(--border-strong);
+}
+
+.notice {
+  padding: 8px 11px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--warn);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+/* ══════════ API 连接抽屉(控制台顶部展开) ══════════ */
+
+.conn-drawer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: auto;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-strong);
+  border-left: 1px solid var(--border-strong);
+  border-right: 1px solid var(--border-strong);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.45);
+  animation: drawer-in 0.16s ease-out;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+
+.conn-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.conn-drawer-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.conn-drawer-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.conn-active-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg);
+  white-space: nowrap;
+}
+
+.conn-drawer-body {
+  /* 单栏纵向堆叠:抽屉宽度=聊天区宽度,可能很窄,不能靠横向滚动看全 */
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px 14px;
+}
+
+.conn-main {
+  min-width: 0;
+}
+
+.conn-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+  margin-top: 10px;
+}
+
+.conn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.conn-field.span-2 {
+  grid-column: span 2;
+}
+.conn-field .select,
+.conn-field .text-input {
+  max-width: none;
+  width: 100%;
+}
+
+.conn-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.conn-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.conn-select {
+  flex: 1;
+  min-width: 0;
+}
+.conn-model-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.conn-note {
+  margin-top: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.conn-side {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: flex-start;
+}
+
+.conn-side-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.conn-textarea {
+  width: 100%;
+  padding: 7px 9px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.conn-textarea:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+/* ══════════ 欢迎页(无角色卡时) ══════════ */
+
+.welcome {
+  height: 100%;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 30px 20px;
+}
+
+.welcome-mark {
+  font-size: 26px;
+  color: var(--accent);
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
+  margin-bottom: 8px;
+}
+
+.welcome-title {
+  font-family: var(--mono);
+  font-size: 16px;
+  letter-spacing: 0.34em;
+  color: var(--text);
+  text-indent: 0.34em; /* 抵消最后一个字的字距,保证视觉居中 */
+}
+
+.welcome-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--text-faint);
+  margin-bottom: 22px;
+}
+
+.welcome-hello {
+  font-size: 16px;
+  color: var(--text);
+}
+
+.welcome-tag {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 22px;
+}
+
+.welcome-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 26px;
+}
+
+.welcome-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-panel);
+  font-size: 12px;
+}
+
+.wc-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.wc-value {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.wc-action {
+  color: var(--warn);
+  border-bottom: 1px dashed var(--border-strong);
+  font-size: 12px;
+}
+.wc-action:hover {
+  color: var(--warn);
+  border-bottom-style: solid;
+}
+
+.welcome-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 26px;
+}
+
+.wstep {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: left;
+}
+
+.wstep-n {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+}
+
+/* 已经有卡时替换上手三步:每次进来都停在这一页,主动作要一眼看见 */
+.welcome-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 26px;
+}
+
+.welcome-start-btn {
+  padding: 9px 26px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--accent);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.welcome-start-btn:hover {
+  background: var(--accent-dim);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.welcome-start-note {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.welcome-foot {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  opacity: 0.75;
+}
+
+/* ══════════ 全局提示 ══════════ */
+
+.toast {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 5px;
+  font-size: 12px;
+  z-index: 100;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.6);
+  max-width: 74vw;
+  animation: slide-in 0.16s ease-out;
+}
+.toast.error {
+  border-color: #46242a;
+  color: #f2b8b8;
+}
+.toast.ok {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* ── 流式 & 思维链 ────────────────────────────────── */
+
+/* 光标跟在最后一个字后面,是唯一还在动的东西 —— 别的都用不着动画 */
+.stream-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--text-body);
+  animation: caret-blink 1s steps(1) infinite;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* 思维链和正文分开存,也分开渲染:一个折叠块,收起时只露一行 */
+.reasoning {
+  margin: 4px 0 8px;
+  border-left: 2px solid var(--border-strong);
+  background: color-mix(in srgb, var(--bg-raised) 60%, transparent);
+  border-radius: 0 4px 4px 0;
+}
+.reasoning-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.reasoning-head:hover {
+  color: var(--text-dim);
+}
+.reasoning-caret {
+  width: 9px;
+  flex: none;
+}
+.reasoning-label {
+  flex: none;
+  letter-spacing: 0.04em;
+}
+/* 标出思维链是从正文的 <think> 里扒的,而不是模型单独给的 —— 调试时这个区别要紧 */
+.reasoning-tag {
+  flex: none;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  font-size: 10px;
+  opacity: 0.75;
+}
+.reasoning-peek {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.55;
+}
+.reasoning-body {
+  padding: 0 10px 8px 19px;
+  color: var(--text-dim);
+  /* 思维链也在消息块里,跟着一起缩放;比正文小一号的关系保持不变 */
+  font-size: calc(12px * var(--chat-scale, 1));
+  line-height: var(--chat-line, 1.65);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wc-flag {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+/* 连接表单里的开关行 */
+.conn-switch {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+.conn-switch input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.conn-switch-hint {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ── 就地编辑 ─────────────────────────────────────── */
+
+.chat-msg.editing {
+  border-color: var(--border-strong);
+}
+/* 编辑框顶替的是 .chat-text 那个气泡,排版规格就得跟它一份不差 ——
+   字号、行距、内边距、圆角全部对齐,不然一进编辑文字就缩一圈、位置也错开。
+   高度由 ChatPanel 按内容撑满(见 editRef),不设上限:气泡多高框就多高,
+   长回复照样一眼看全。嫌高可以拖右下角,resize 留着就是干这个的。 */
+.chat-edit {
+  width: 100%;
+  /* 只留个下限,免得改一两个字的时候框薄得不好点 */
+  min-height: 90px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-body);
+  font: inherit;
+  font-size: calc(13px * var(--chat-scale, 1));
+  line-height: var(--chat-line, 1.7);
+  resize: vertical;
+  overflow-y: hidden;
+}
+.chat-edit:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+.chat-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.chat-edit-hint {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* ── 分支切换 ─────────────────────────────────────── */
+
+/* 只长在最后一条角色消息下面 —— 酒馆也只让最后一条滑 */
+.swipe-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+.swipe-btn {
+  width: 26px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    color 0.12s;
+}
+.swipe-btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.swipe-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* 这一下会真的调 API,和单纯翻分支区分开 */
+.swipe-btn.generates {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.swipe-count {
+  min-width: 30px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+/* 两个分支的提示词一样还是不一样 —— 调试台比酒馆多出来的那点东西 */
+.swipe-diff {
+  margin-left: 6px;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.swipe-diff.changed {
+  color: var(--text-dim);
+  border-bottom: 1px dashed var(--border-strong);
+}
+
+/* ══════════ token 预算条(左栏,预设面板之下) ══════════ */
+/* 黑白主题是临时的,这三段先用低饱和色相,后期美化时统一收 */
+
+:root {
+  --seg-preset: #7a9cc6;
+  --seg-card: #c69c7a;
+  --seg-history: #4a4a4a;
+  /* 竖版明细条多拆出的三段:都在既有蓝/橙两色相里调明度,不引新色相 */
+  --seg-persona: #9db4d0;
+  --seg-examples: #d0b49d;
+  --seg-worldinfo: #a8a8a8;
+}
+
+.budget-bar {
+  flex: 0 0 auto;
+  padding: 10px 12px 11px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.budget-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.budget-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.budget-input {
+  width: 76px;
+  margin-left: auto;
+  padding: 2px 7px;
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.budget-input:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+  background: var(--bg-hover);
+}
+
+.budget-more {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  padding: 2px 4px;
+}
+.budget-more:hover {
+  color: var(--text);
+}
+
+.budget-track {
+  position: relative;
+  height: 18px;
+  margin: 10px 0 16px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.budget-fill {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: hidden;
+  border-radius: 2px;
+}
+
+.budget-seg {
+  height: 100%;
+}
+.budget-seg.preset {
+  background: var(--seg-preset);
+}
+.budget-seg.card {
+  background: var(--seg-card);
+}
+.budget-seg.history {
+  background: var(--seg-history);
+}
+/* 固定开销超预算:固定两段转红,历史本就一条都进不来 */
+.budget-bar.overflow .budget-seg.preset,
+.budget-bar.overflow .budget-seg.card {
+  background: var(--danger);
+}
+
+/* 那条「线」:固定开销的终点 */
+.budget-tick {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--text);
+  transform: translateX(-1px);
+  pointer-events: none;
+}
+
+.budget-handle {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  background: var(--text);
+  transform: translate(-50%, -50%) rotate(45deg);
+  box-shadow: 0 0 0 2px var(--bg-panel);
+  pointer-events: none;
+}
+/* 关掉截断:没有把手 */
+.budget-bar.off .budget-handle {
+  display: none;
+}
+
+/* 原生滑块盖在轨道上,只借用拖拽和键盘,不长自己的脸 */
+.budget-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+}
+
+.budget-scale-min,
+.budget-scale-max {
+  position: absolute;
+  top: 100%;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+}
+.budget-scale-min {
+  left: 0;
+}
+.budget-scale-max {
+  right: 0;
+}
+
+.budget-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.budget-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.budget-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+.budget-swatch.preset {
+  background: var(--seg-preset);
+}
+.budget-swatch.card {
+  background: var(--seg-card);
+}
+.budget-swatch.history {
+  background: var(--seg-history);
+}
+
+.budget-legend-tokens {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  min-width: 36px;
+  text-align: right;
+}
+
+.budget-sums {
+  text-align: right;
+  flex: 0 0 auto;
+}
+.budget-sum {
+  font-size: 11px;
+  color: var(--text);
+}
+.budget-sum.danger {
+  color: var(--danger);
+}
+.budget-dropped {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: 1px;
+}
+
+.budget-notice {
+  margin-top: 7px;
+  font-size: 11px;
+}
+.budget-notice.danger {
+  color: var(--danger);
+}
+
+.budget-detail {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--border);
+}
+
+.budget-range-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+
+.budget-range-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  min-width: 42px;
+  text-align: center;
+}
+
+.budget-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+}
+
+.budget-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.budget-detail-row.dropped {
+  color: var(--text-faint);
+}
+
+.budget-detail-name {
+  color: var(--text-dim);
+}
+
+.budget-detail-tokens {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* ══════════ 聊天区:show more + 截断线 ══════════ */
+
+.chat-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 4px 0 10px;
+}
+
+.chat-more-note {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* 截断线:左侧内容 = 上方那批旧历史不进提示词 */
+.chat-truncate-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.chat-truncate-line::before,
+.chat-truncate-line::after {
+  content: '';
+  flex: 1;
+  border-top: 1px dashed var(--border-strong);
+}
+
+.chat-msg-wrap {
+  display: contents;
+}
+
+.chat-msg.dimmed {
+  opacity: 0.45;
+}
+.chat-msg.dimmed:hover {
+  opacity: 0.8;
+}
+
+/* ══════════ 聊天区:贴底跟随的「回到最新」 ══════════ */
+
+/* 往上翻、离开底部时浮出;绝对定位悬在 composer 上方,水平居中,小圆钮不挡文字 */
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(100% + 10px);
+  z-index: 5;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  transition: background 0.12s, color 0.12s, transform 0.12s;
+}
+.jump-latest:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  transform: translateX(-50%) scale(1.08);
+}
+
+/* --- 头像裁剪弹窗 --- */
+/* 借 inspector 的背板,但它是贴右的整列侧栏,裁剪要的是居中的小盒子 */
+.crop-inspector {
+  width: auto;
+  height: auto;
+  max-width: 92vw;
+  max-height: 88vh;
+  margin: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  animation: none;
+}
+
+/* 比例是死的,标在标题旁边说明一下就够了 */
+.crop-spec {
+  margin-left: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.crop-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  overflow: auto;
+}
+
+.crop-hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.crop-stage {
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  touch-action: none;
+  user-select: none;
+}
+
+.crop-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* 选框外压暗靠一圈超大阴影,不用额外铺四块遮罩 */
+.crop-rect {
+  position: absolute;
+  border: 1px solid var(--text);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+  cursor: move;
+  touch-action: none;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--text);
+  border-radius: 2px;
+  touch-action: none;
+}
+
+.crop-handle.nw {
+  left: -6px;
+  top: -6px;
+  cursor: nwse-resize;
+}
+
+.crop-handle.ne {
+  right: -6px;
+  top: -6px;
+  cursor: nesw-resize;
+}
+
+.crop-handle.sw {
+  left: -6px;
+  bottom: -6px;
+  cursor: nesw-resize;
+}
+
+.crop-handle.se {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+
+/* --- 玩家人设抽屉 --- */
+/* 描述是长文本,给它一个能拉高的多行框(其余字段沿用 .text-input) */
+textarea.persona-desc {
+  min-height: 76px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+/* ⟳ 拉模型列表时的忙碌态:按钮本身不转,只是压暗,免得和 spinner 抢注意力 */
+.btn.busy {
+  color: var(--text-faint);
+}
+
+/* ══════════ 玩家人设面板 ══════════ */
+
+/* 标题旁的「?」—— 这功能对新用户不自明,给它一段现场说明 */
+.persona-help-btn {
+  width: 17px;
+  height: 17px;
+  margin-left: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+}
+
+.persona-help-btn:hover,
+.persona-help-btn.on {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.persona-help {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--text-dim);
+}
+
+.persona-help p {
+  margin: 0 0 6px;
+}
+.persona-help p:last-child {
+  margin-bottom: 0;
+}
+.persona-help b {
+  color: var(--text);
+  font-weight: 600;
+}
+.persona-help code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-raised);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+.persona-help-dim {
+  color: var(--text-faint);
+}
+
+.persona-list-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.persona-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.persona-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+}
+
+/* 启用中的那个:整行提亮 —— 一眼能认出「我现在是谁」 */
+.persona-item.active {
+  border-color: var(--border-strong);
+  background: var(--bg-raised);
+}
+
+/* 正在编辑的那个:左侧一道竖杠,和「启用」是两件事 */
+.persona-item.editing {
+  border-left: 2px solid var(--accent);
+}
+
+.persona-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0;
+  background: none;
+  border: none;
+  text-align: left;
+}
+
+.persona-item-main:disabled {
+  cursor: not-allowed;
+}
+
+.persona-item-avatar {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  flex-shrink: 0;
+}
+
+.persona-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.persona-item-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.persona-item-badge {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+/* 绑定类的小标(本卡 / 默认):描边,和「当前」区分开 */
+.persona-item-badge.bound {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+/* 人设详情里的「选卡时自动切换」 */
+.persona-bind {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.persona-item-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* 头顶那颗「当前」小chip里的脸 */
+.persona-chip-avatar {
+  width: 16px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -3px;
+}
+
+/* --- 编辑表单 --- */
+.persona-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.persona-identity {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.persona-avatar-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.persona-name-cell {
+  flex: 1;
+  min-width: 0;
+}
+
+.persona-avatar-btn {
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: none;
+  line-height: 0;
+}
+
+.persona-avatar-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.persona-avatar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.persona-avatar-img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--bg-hover);
+}
+
+/* ══════════ 设置抽屉 ══════════
+   外壳复用 .conn-drawer(和 API / 玩家 是同一块地方,同时只开一个),
+   里面是「左边分类 + 右边设置项」—— 以后新增的设置都往这里加分类 */
+
+.sp-main {
+  display: flex;
+  min-height: 0;
+}
+
+.sp-nav {
+  width: 128px;
+  flex-shrink: 0;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+}
+
+.sp-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.sp-nav-item:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+.sp-nav-item.active {
+  background: var(--bg-raised);
+  color: var(--accent);
+}
+
+.sp-nav-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.sp-body {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sp-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sp-group-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+}
+
+.sp-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sp-group-note {
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.6;
+}
+
+/* ── 排版方案:五张带缩略图的卡 ── */
+
+.sp-layouts {
+  display: grid;
+  /* 下限压到 124px:聊天区正常宽度下五张能并成一排,窄了再自己折 */
+  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+  gap: 8px;
+}
+
+.sp-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s;
+}
+.sp-layout:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-raised);
+}
+.sp-layout.active {
+  border-color: var(--accent);
+  background: var(--bg-raised);
+}
+
+.sp-layout-name {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.sp-layout.active .sp-layout-name {
+  color: var(--accent);
+}
+
+.sp-layout-note {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+/* 缩略图:光看名字想象不出来长什么样,用几根灰条把骨架摆出来 */
+.sp-prev {
+  height: 62px;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.sp-layout.active .sp-prev {
+  background: var(--bg);
+}
+
+.sp-prev-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sp-prev-face {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+
+.sp-prev-bubble {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+.sp-prev-bare {
+  flex: 1;
+  min-width: 0;
+}
+
+.sp-prev-lines i {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: #3f3f3f;
+}
+.sp-prev-lines i + i {
+  margin-top: 3px;
+}
+.sp-prev-lines i:nth-child(2) {
+  width: 84%;
+}
+.sp-prev-lines i:nth-child(3) {
+  width: 58%;
+}
+
+.sp-prev-name,
+.sp-prev-plate {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  margin-bottom: 5px;
+  background: var(--border-strong);
+}
+.sp-prev-name {
+  width: 26px;
+}
+.sp-prev-plate {
+  width: 34px;
+  background: var(--text-faint);
+}
+.sp-prev-plate.short {
+  width: 22px;
+}
+
+.sp-prev-rule {
+  height: 1px;
+  background: var(--border);
+}
+
+.sp-prev-quoted {
+  padding-left: 6px;
+  border-left: 2px solid var(--border-strong);
+}
+
+/* 对向:气泡不撑满,自己那条靠右 */
+.sp-prev-duo .sp-prev-bubble {
+  flex: 0 0 66%;
+}
+.sp-prev-duo .sp-prev-row.mine {
+  justify-content: flex-end;
+}
+.sp-prev-duo .sp-prev-row.mine .sp-prev-bubble {
+  flex: 0 0 48%;
+  background: var(--bg-raised);
+  border-color: var(--border-strong);
+}
+
+/* 紧凑:行与行贴得更近 */
+.sp-prev-compact {
+  gap: 3px;
+}
+.sp-prev-compact .sp-prev-face {
+  width: 8px;
+  height: 8px;
+}
+.sp-prev-compact .sp-prev-bubble {
+  padding: 2px 4px;
+}
+
+/* ── 字号 / 行距 ── */
+
+.sp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 行距和列宽都是窄控件,并排放;抽屉窄了自己折成两行 */
+.sp-duo-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 26px;
+}
+
+.sp-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sp-avatar-controls {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 示范用的那张脸放在一个固定格子里 —— 格子按最大档 (72px) 留位,
+   拖滑块时右边那排控件才不会跟着左右晃 */
+.sp-avatar-cell {
+  flex-shrink: 0;
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+}
+
+.sp-avatar-demo {
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.sp-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sp-slider {
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  cursor: pointer;
+}
+.sp-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg);
+}
+.sp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  /* 轨道含边框 6px 高,把 13px 的滑块提上去一半才骑在中线上 */
+  margin-top: -3.5px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.sp-slider::-moz-range-track {
+  height: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg);
+}
+.sp-slider::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+/* 默认焦点环是一整块白底,盖住整条轨道 —— 换成贴边的一圈 */
+.sp-slider:focus {
+  outline: none;
+}
+.sp-slider:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.sp-slider-value {
+  flex-shrink: 0;
+  min-width: 42px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.sp-seg {
+  display: inline-flex;
+  align-self: flex-start;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.sp-seg-btn {
+  padding: 5px 14px;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+.sp-seg-btn:last-child {
+  border-right: none;
+}
+.sp-seg-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.sp-seg-btn.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* ── 对话高亮 ── */
+
+.sp-switch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  text-align: left;
+  transition: border-color 0.12s;
+}
+.sp-switch:hover {
+  border-color: var(--border-strong);
+}
+
+.sp-switch-label {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.sp-switch-note {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.sp-swatches {
+  display: flex;
+  gap: 12px;
+}
+
+.sp-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: var(--sw);
+}
+.sp-swatch.active {
+  /* 先描一圈底色再描本色 —— 中间留出一道缝,选中态比加粗边框清楚 */
+  box-shadow: 0 0 0 2px var(--bg-panel), 0 0 0 3px var(--sw);
+}
+
+.sp-sample {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ══════════ 设置 › 宏 ══════════ */
+
+/* 三列:宏名(定宽,等宽字体对齐好读)/ 说明 / 当前值 */
+.sp-macro-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.sp-macro-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+.sp-macro-row:first-child {
+  border-top: none;
+}
+.sp-macro-row.head {
+  background: var(--bg-raised);
+  color: var(--text-faint);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sp-macro-name {
+  justify-self: start;
+  max-width: 100%;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  text-align: left;
+  word-break: break-all;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.sp-macro-name:hover {
+  color: var(--accent);
+}
+.sp-macro-name.copied {
+  color: var(--accent);
+}
+
+.sp-macro-note {
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.sp-macro-alias {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.sp-macro-value {
+  min-width: 0;
+  color: var(--text);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  /* 换行符在这里没意义,一行一格更好扫 */
+  white-space: normal;
+}
+.sp-macro-value.empty,
+.sp-macro-value.dyn {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.sp-empty {
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.6;
+}
+
+.sp-custom-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 名字 / 值 / 删除 一行;出错时下面再挂一行提示,所以用 grid 而不是 flex */
+.sp-custom-row {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+}
+.sp-custom-row.bad {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+}
+
+.sp-custom-name {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.sp-custom-name .conn-input {
+  min-width: 0;
+  font-family: var(--mono);
+}
+
+.sp-brace {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.sp-custom-value {
+  min-width: 0;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.sp-custom-fault {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  color: var(--danger);
+}
+
+/* 试一试:左边写、右边即时展开。窄了自己叠成上下 */
+.sp-try {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.sp-try-in {
+  min-width: 0;
+  resize: vertical;
+  font-family: var(--mono);
+  line-height: 1.6;
+}
+
+.sp-try-out {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-raised);
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .sp-macro-row {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+  /* 窄屏把「当前值」挪到第二行整行,别把说明挤成一列一个字 */
+  .sp-macro-row > :nth-child(3) {
+    grid-column: 1 / -1;
+    padding-left: 0;
+  }
+  .sp-custom-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .sp-custom-value {
+    grid-column: 1 / -1;
+  }
+  .sp-try {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ══════════ 块拖拽排序 ══════════ */
+/* 把手常隐,hover 行才浮出来 —— 左栏很窄,不值得常驻一列 */
+.block-grip {
+  flex-shrink: 0;
+  width: 9px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-faint);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+  user-select: none;
+  /* 把手是拖拽起点 —— 从它开始的手势不许被浏览器抢去当滚动 */
+  touch-action: none;
+}
+.block-row:hover .block-grip {
+  opacity: 1;
+}
+
+.block-grip:hover {
+  color: var(--text);
+}
+.block-grip:active {
+  cursor: grabbing;
+}
+
+.block-row.dragging {
+  opacity: 0.35;
+}
+
+/* 落点指示:2px 强调色横线。用 inset shadow 不用 border,
+   免得行高跳动把下面的行推来推去 */
+.block-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.block-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* ══════════ 块编辑弹窗 ══════════ */
+/* 借 inspector 的背板,改成屏幕中间的大框:上面属性一行,下面左编辑右预览 */
+.block-modal {
+  width: min(1280px, 94vw);
+  height: 88vh;
+  max-height: 88vh;
+  margin: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  animation: none;
+}
+
+.block-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.bm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* 名称 / 角色 / 禁止覆盖 挤在一行,把高度留给下面的正文 */
+.bm-props {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px 22px;
+  flex-shrink: 0;
+}
+.bm-name {
+  flex: 0 1 320px;
+}
+
+/* 左编辑、右预览,两栏各自滚动,一起吃掉剩下的全部高度 */
+.bm-split {
+  flex: 1;
+  min-height: 320px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+.bm-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  min-width: 0;
+}
+.bm-pane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+/* 编辑框撑满栏高:两层(着色层 + 输入层)一起跟着伸 */
+.bm-pane .ct-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bm-pane .ct-input,
+.bm-pane .bm-textarea {
+  flex: 1;
+  min-height: 200px;
+  resize: none;
+}
+
+.bm-preview {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 9px 11px;
+  overflow: auto;
+  background: var(--bg-raised);
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-body);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bm-unresolved {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--warn);
+}
+
+.bm-label {
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+/* 弹窗里的输入框铺满,不受通用 220px 上限约束 */
+.bm-field .text-input {
+  max-width: none;
+}
+
+/* role 三选一:连成一条,选中的反白 */
+.bm-roles {
+  display: flex;
+}
+
+.bm-role {
+  padding: 4px 15px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 11px;
+  transition: background 0.12s, color 0.12s;
+}
+.bm-role + .bm-role {
+  border-left: none;
+}
+.bm-role:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.bm-role:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.bm-role:hover {
+  color: var(--text-dim);
+}
+.bm-role.on {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.bm-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.bm-textarea {
+  width: 100%;
+  min-height: 240px;
+  resize: vertical;
+  padding: 9px 11px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-body);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.bm-textarea:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.bm-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.bm-marker-note {
+  padding: 12px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.bm-note {
+  padding: 8px 11px;
+  border-left: 2px solid var(--accent);
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.block-modal-foot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.bm-id {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.bm-builtin {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--text-faint);
+}
+
+/* marker 块的「发出去之前套进的模板」—— 只读展示,不是能改的字 */
+.bm-wrap {
+  margin: 0;
+  padding: 8px 11px;
+  background: var(--bg);
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* marker 说明里嵌的 identifier */
+.bm-marker-note code {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+/* ══════════ 插件抽屉 ══════════
+   外壳和设置抽屉是同一套(.conn-drawer + .sp-main),左边插件列表、右边配置。
+   主题是纯灰阶:状态用实心 / 空心 / 虚线的点区分,不引入色相 */
+
+.sp-nav-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.sp-nav-item:disabled:hover {
+  background: none;
+  color: var(--text-dim);
+}
+.pl-soon {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.pl-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pl-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.pl-status-text {
+  flex: 1;
+  min-width: 180px;
+  line-height: 1.5;
+}
+.pl-status-text b {
+  color: var(--text);
+  font-weight: 600;
+}
+.pl-status-dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px dashed var(--text-faint);
+}
+.pl-status.on .pl-status-dot {
+  border: none;
+  background: var(--accent);
+}
+.pl-status.off .pl-status-dot {
+  border-style: solid;
+  border-color: var(--text-dim);
+}
+
+.pl-wide {
+  width: 100%;
+  max-width: none;
+  font-size: 13px;
+}
+.pl-textarea {
+  resize: vertical;
+  line-height: 1.6;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.pl-code {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-raised);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+.pl-error {
+  font-size: 11px;
+  color: #f2b8b8;
+}
+.pl-preview {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pl-sprites {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pl-sprite-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pl-sprite {
+  display: grid;
+  /* 抽屉宽度 = 聊天列宽度,常常只有三四百像素 —— 按钮不占一列,放到字段下面 */
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.pl-thumb {
+  width: 64px;
+  height: 96px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px dashed var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-raised);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.pl-thumb span {
+  align-self: center;
+}
+.pl-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+}
+.pl-thumb:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+}
+.pl-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.pl-field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.pl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.pl-field .text-input {
+  width: 100%;
+  max-width: none;
+}
+.pl-badge {
+  flex-shrink: 0;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 600;
+}
+.pl-actions {
+  grid-column: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* 场景包:音乐行左边是试听按钮;背景是横图,抽屉又窄,图放在上面占满一行 */
+.pl-scene {
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+.pl-scene.bg {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pl-scene.bg .pl-actions {
+  grid-column: 1;
+}
+.pl-thumb-wide {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  align-items: center;
+}
+.pl-thumb-wide img {
+  object-fit: cover;
+  object-position: center;
+}
+.pl-play {
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  border-style: solid;
+  border-radius: 50%;
+  font-size: 18px;
+  color: var(--text);
+  cursor: pointer;
+}
+.pl-play.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.pl-scene .pl-play {
+  justify-self: center;
+}
+.pl-focus {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* 竖屏裁切预览:9:16 的小窗,看得到竖着玩时背景露出哪一块 */
+.pl-focus-preview {
+  flex: none;
+  width: 27px;
+  height: 48px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-raised);
+}
+.pl-focus-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* 从左栏点插件块跳过来:提示词模板那一组闪一下,告诉人「在这里改」 */
+.pl-flash {
+  animation: pl-flash 1.6s ease-out;
+  border-radius: 6px;
+}
+@keyframes pl-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 2px var(--accent);
+    background: var(--bg-raised);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+    background: transparent;
+  }
+}
+.pl-pack-select {
+  flex: 1;
+  min-width: 0;
+}
+.pl-pack-name {
+  flex: 1;
+  min-width: 120px;
+}
+
+/* 顶栏的「视觉小说」入口:桌面端图标 + 文字,移动端只剩图标(见移动端那段) */
+.topbar-vn-btn {
+  margin-left: 4px;
+}
+
+/* ══════════ 顶栏:移动端控件在桌面端的缺省态 ══════════
+   这几个东西只在窄屏存在。桌面端左右栏有列边缘的 panel-rail 收放,
+   次要入口也一行铺得下 —— 所以默认全部不渲染 */
+
+.topbar-panel-btn,
+.topbar-more-btn,
+.topbar-mobile-spacer,
+.topbar-rest-veil {
+  display: none;
+}
+
+/* display:contents —— 这层在桌面端的布局里完全不存在,
+   顶栏还是原来那一行平铺。移动端才把它变成 ⋯ 菜单的容器 */
+.topbar-rest {
+  display: contents;
+}
+
+.topbar-model-select {
+  width: 190px;
+}
+
+/* 宽屏把全局信息按“连接 → 个人偏好 → API 管理”排开。
+   topbar-rest 在桌面是 display:contents,因此它的子项参与顶栏同一条 flex 轴。 */
+@media (min-width: 1001px) {
+  .topbar-field {
+    order: 1;
+  }
+  .topbar-spacer {
+    order: 2;
+  }
+  .topbar-action {
+    order: 3;
+  }
+  .topbar-api-btn {
+    order: 4;
+  }
+}
+
+/* ══════════ 触屏:hover 才露脸的东西得常驻 ══════════
+   指针没有悬停态的设备上,这些操作等于不存在 —— 消息的编辑 / 删除 /
+   重 roll / 开分支全挂在 .chat-msg-actions 上,不常驻就彻底点不到。
+   按 hover 而不是宽度分档:触屏 iPad 横屏超过 1000px,一样没有 hover */
+
+@media (hover: none) {
+  .chat-msg-actions,
+  .chat-row-actions {
+    opacity: 1;
+  }
+
+  /* 块排序在触屏上改走 Pointer Events(见 PresetPanel 的 onPointerDown)——
+     把手从 hover 浮现改成常驻,并拉成整条行高,手指好捏 */
+  .block-grip {
+    opacity: 1;
+    width: 16px;
+    align-self: stretch;
+    display: grid;
+    place-items: center;
+  }
+
+  /* 22px 的图标钮在手指下太小,统一抬到 30 */
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+  .icon-btn.tiny {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+  }
+}
+
+/* ══════════ 移动端 ══════════
+   断点 1000px,和酒馆 public/css/mobile-styles.css 同一档(竖屏 iPad 也算)。
+   思路也照搬酒馆:三栏塌成一栏,左右两栏改成盖住聊天区的 100dvw 全屏抽屉,
+   聊天区独占整屏。JS 侧只负责开局把两栏收起来、停掉拖拽调宽,见 useIsMobile */
+
+@media (max-width: 1000px) {
+  /* ── 高度基准 ──
+     iOS Safari 地址栏一伸缩,100vh 会把输入框顶到屏幕外。dvh 跟着可视区走;
+     不支持 dvh 的浏览器忽略这条,退回骨架里原本的 height:100% */
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+
+  body {
+    /* 文档层不滚动也不橡皮筋 —— 滚动只发生在聊天区和面板内部。
+       .console 正好一屏高,不需要页面级滚动 */
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .console {
+    height: 100dvh;
+  }
+
+  /* ── 顶栏:品牌 + 预设/角色卡一级入口 + 连接状态 + ⋯ ── */
+
+  :root {
+    --topbar-h: 50px;
+  }
+
+  .topbar {
+    position: relative;
+    /* 高于全屏抽屉(40):抽屉从顶栏下沿开始,顶栏始终可点 */
+    z-index: 45;
+    gap: 6px;
+    padding: 0 8px;
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+
+  .topbar-brand {
+    min-width: auto;
+    flex: 0 0 auto;
+    padding-right: 0;
+    margin-right: 0;
+    border-right: none;
+  }
+  .topbar-title {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+  }
+  .topbar-title-wide {
+    display: none;
+  }
+  .topbar-title-compact {
+    display: inline;
+  }
+  /* 副标题、API 按钮的文字都让位,只留下那颗连接状态点 */
+  .topbar-sub,
+  .topbar-btn-label {
+    display: none;
+  }
+
+  .topbar .btn {
+    min-height: 38px;
+    padding: 6px 10px;
+  }
+
+  .topbar-panel-btn,
+  .topbar-more-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .topbar-panel-btn,
+  .topbar-more-btn,
+  .topbar-vn-btn,
+  .topbar-api-btn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    padding: 0;
+    margin-left: 0;
+    font-size: 14px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-dim);
+  }
+  .topbar-panel-btn:hover:not(:disabled),
+  .topbar-more-btn:hover:not(:disabled),
+  .topbar-vn-btn:hover:not(:disabled),
+  .topbar-api-btn:hover:not(:disabled),
+  .topbar-panel-btn.accent,
+  .topbar-more-btn.accent,
+  .topbar-api-btn.active {
+    border-color: var(--border-strong);
+    background: var(--bg-raised);
+    color: var(--text);
+  }
+  .topbar-api-btn .dot {
+    width: 8px;
+    height: 8px;
+    margin-right: 0;
+  }
+  .topbar-rest.open {
+    overflow: visible;
+  }
+
+  .topbar-mobile-spacer {
+    display: block;
+    flex: 1;
+  }
+
+  /* ── ⋯ 菜单:顶栏下方落一张竖排卡片 ── */
+
+  .topbar-rest {
+    display: none;
+  }
+  .topbar-rest.open {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    position: absolute;
+    top: 100%;
+    right: 6px;
+    left: 6px;
+    z-index: 46;
+    margin-top: 4px;
+    padding: 10px;
+    max-height: calc(100dvh - var(--topbar-h) - 16px);
+    overflow-y: auto;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+    animation: drawer-in 0.14s ease-out;
+  }
+
+  /* 横排里用来把右半边推开的占位条,在竖排里会把菜单撑得老高 */
+  .topbar-rest.open .topbar-spacer {
+    display: none;
+  }
+
+  .topbar-rest.open .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+  }
+  .topbar-rest.open .topbar-action {
+    justify-content: flex-start;
+    padding-left: 12px;
+  }
+  .topbar-rest.open .topbar-field {
+    gap: 8px;
+  }
+  .topbar-rest.open .topbar-label {
+    flex-shrink: 0;
+    width: 28px;
+  }
+  .topbar-rest.open .select {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    min-height: 38px;
+  }
+  .topbar-rest.open .topbar-model-select {
+    width: auto;
+  }
+  .topbar-rest.open .btn.small {
+    flex-shrink: 0;
+    min-width: 38px;
+  }
+
+  /* 面板里的低频操作在手机上是完整浮层,而不是贴着右边的一串裸文字。
+     可视高度很低时内部滚动,不会挤坏预设选择条。 */
+  .preset-menu-pop {
+    position: fixed;
+    top: calc(var(--topbar-h) + 8px);
+    right: 8px;
+    width: min(210px, calc(100dvw - 16px));
+    max-height: calc(100dvh - var(--topbar-h) - 16px);
+    overflow-y: auto;
+    z-index: 60;
+    border-radius: 10px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.58);
+  }
+
+  /* 点菜单外面收起来。只盖顶栏以下 —— 顶栏本身(含 ⋯)要一直能点 */
+  .topbar-rest-veil {
+    display: block;
+    position: fixed;
+    inset: var(--topbar-h) 0 0 0;
+    z-index: 44;
+  }
+
+  /* ── 三栏塌成一栏 ──
+     左右两栏 position:fixed 脱离网格,只剩聊天列还在流里独占整行 */
+
+  .console-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .col-resizer {
+    display: none;
+  }
+
+  .left-col,
+  .console-body > .panel.right {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    width: 100dvw;
+    height: calc(100dvh - var(--topbar-h));
+    z-index: 40;
+    transition: transform 0.2s ease;
+    will-change: transform;
+  }
+
+  /* 收起 = 滑出屏幕(各回各家那一侧),而不是 display:none —— 留住过渡动画 */
+  .console-body.left-collapsed .left-col {
+    transform: translateX(-100%);
+  }
+  .console-body.right-collapsed > .panel.right {
+    transform: translateX(100%);
+  }
+
+  /* 收起态渲染的是那条竖排文字轨,移动端没有列边缘可贴,直接不要 */
+  .panel-rail {
+    display: none;
+  }
+
+  .panel.left,
+  .panel.right {
+    border-left: none;
+    border-right: none;
+  }
+
+  /* 全屏抽屉里的收起钮就是「关闭」,给足指头落点 */
+  .panel-collapse {
+    min-width: 34px;
+    min-height: 34px;
+    display: grid;
+    place-items: center;
+    font-size: 16px;
+    padding: 0;
+  }
+
+  .panel-head {
+    padding: 10px 12px;
+  }
+
+  /* 左栏底部两条:高度给够 */
+  .history-trigger {
+    padding: 13px 14px;
+  }
+
+  /* ── 触屏可达性 ──
+     上面 (hover: none) 那一段已经写过一遍。这里再照抄一份是故意的:
+     指针能力探测在国产壳浏览器里并不可靠,而 ≤1000px 基本就是手机/平板,
+     漏判的代价是消息的编辑/删除/重 roll 全体点不到 —— 宁可窄窗口的桌面端
+     也常驻这些按钮 */
+
+  .chat-msg-actions,
+  .chat-row-actions {
+    opacity: 1;
+  }
+  .block-grip {
+    opacity: 1;
+    width: 16px;
+    align-self: stretch;
+    display: grid;
+    place-items: center;
+  }
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+  .icon-btn.tiny {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+  }
+
+  /* ── 聊天区 ── */
+
+  .chat-scroll {
+    padding: 12px 10px 8px;
+  }
+
+  /* 桌面端靠 --chat-width 收窄成一条书栏;手机上本来就只有一栏宽 */
+  .chat-msg,
+  .composer-inner {
+    max-width: 100%;
+  }
+
+  .composer {
+    padding: 8px 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+
+  .composer-input {
+    /* iOS 的老规矩:聚焦时字号小于 16px 就自动放大整页,而且缩不回去 */
+    font-size: max(16px, calc(13px * var(--chat-scale, 1)));
+    min-height: 44px;
+    /* 软键盘弹起后可视区只剩一半,40vh 的输入框会把消息挤没 */
+    max-height: 32dvh;
+  }
+
+  /* ── 表单控件:同样躲 iOS 的聚焦缩放 ──
+     每个组件自己的 .xxx-textarea / .xxx-input 都带着 11~15px 的类选择器,
+     类的优先级天生压过下面这条按标签选的规则,补一个类名就得漏过一个
+     (bm-textarea/ct-input/card-textarea/ce-textarea/conn-textarea/... 已经
+     踩了一整排)。改用 !important 兜底所有输入控件,不再追着类名补。 */
+
+  .select,
+  input,
+  textarea {
+    font-size: 16px !important;
+    max-width: 100%;
+  }
+
+  /* 语法高亮层跟着输入框一起放大 —— 它是叠在 .ct-input 底下描色的纯展示层,
+     字号对不上,选区和光标位置就会跟看到的字错位 */
+  .ct-hl {
+    font-size: 16px !important;
+  }
+
+  /* ── 盖在聊天区上的抽屉:API / 玩家 / 设置 ── */
+
+  .conn-drawer {
+    height: 100%;
+    max-height: 100%;
+    border-left: none;
+    border-right: none;
+  }
+
+  /* 设置抽屉的左侧分类栏改成顶部横排 —— 128px 的侧栏在手机上吃掉三分之一屏宽 */
+  .sp-main {
+    flex-direction: column;
+  }
+  .sp-nav {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    padding: 8px;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .sp-nav-item {
+    flex: 0 0 auto;
+    width: auto;
+    white-space: nowrap;
+  }
+  .sp-body {
+    padding: 12px 12px 20px;
+  }
+
+  /* 插件抽屉的立绘行:缩略图收小一点,按钮横跨整行 */
+  .pl-sprite {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .pl-thumb {
+    width: 56px;
+    height: 84px;
+  }
+  /* 上面 .pl-thumb 的手机尺寸会盖到这两种上,改回来 */
+  .pl-thumb-wide {
+    width: 100%;
+    height: auto;
+  }
+  .pl-play {
+    width: 52px;
+    height: 52px;
+  }
+  .pl-actions {
+    grid-column: 1 / -1;
+  }
+
+  /* ── 对话历史 ── */
+
+  /* 标题 + 搜索 + 四颗图标钮 + 关闭,390px 一行放不下 —— 让搜索框自己占一行 */
+  .chat-history-head {
+    flex-wrap: wrap;
+  }
+  .chat-history-search {
+    order: 9;
+    flex: 1 0 100%;
+    width: auto;
+    min-width: 0;
+  }
+
+  /* ── 弹窗/抽屉一律铺满 ── */
+
+  .ce-drawer,
+  .inspector {
+    width: 100dvw;
+    max-width: 100dvw;
+    border-left: none;
+  }
+
+  /* imsg-head 塞了 5 项(序号/角色/来源名/kind/tokens)在一行 —— 窄屏上
+     来源名(常是预设块名,可能是一长串中文)会被挤没。让短徽标留在第一行,
+     来源名自己挤到第二行占满宽度,跟上面 .chat-history-search 同一个套路。 */
+  .imsg-head {
+    flex-wrap: wrap;
+  }
+  .imsg-source {
+    order: 9;
+    flex: 1 0 100%;
+  }
+
+  .block-modal {
+    width: 100dvw;
+    max-width: 100dvw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+  }
+  /* 窄屏放不下两栏:编辑在上、预览在下 */
+  .bm-split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(220px, 3fr) minmax(160px, 2fr);
+  }
+}
+
+/* ══════════ 注释着色输入框 ══════════ */
+/* 双层:<pre> 垫底画着色文本,textarea 盖在上面只留光标。
+   两层的字必须像素级对齐,所以字号/行高/padding 写在同一条规则里,
+   padding 走变量 —— 变体只能整体改,没法让两层各走各的。 */
+.ct-wrap {
+  --ct-pad-y: 9px;
+  --ct-pad-x: 11px;
+  position: relative;
+}
+
+.ct-wrap .ct-hl,
+.ct-wrap .ct-input {
+  margin: 0;
+  padding: var(--ct-pad-y) var(--ct-pad-x);
+  border: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  letter-spacing: normal;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* 底层:只负责显示,不接鼠标。滚动位置由 JS 焊到上层 */
+.ct-hl {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--text-body);
+  border-radius: 4px;
+}
+
+/* 上层:撑开尺寸的是它,所以留在正常流里 */
+.ct-input {
+  position: relative;
+  display: block;
+  width: 100%;
+  resize: vertical;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
+  overflow: auto;
+}
+.ct-input:focus {
+  outline: none;
+}
+/* 文字透明不影响占位符 —— 它自己一条规则 */
+.ct-input::placeholder {
+  color: var(--text-faint);
+}
+/* 选区背景照常画在透明文字上,但把它压深一点才看得清 */
+.ct-input::selection {
+  background: var(--bg-hover);
+}
+
+.ct-comment {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* 输入法组字期间:露出 textarea 的真字,底层让位 */
+.ct-wrap.composing .ct-input {
+  color: var(--text);
+}
+.ct-wrap.composing .ct-hl {
+  opacity: 0;
+}
+
+/* --- 变体:详情弹窗里的大框(原 .bm-textarea 的样子) --- */
+.ct-modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.ct-modal:focus-within {
+  border-color: var(--border-strong);
+}
+.ct-modal .ct-input {
+  min-height: 240px;
+}
+
+/* 新建块 —— 紧贴预设行下方。虚线是为了和实心的块行区分开:
+   它不是一个块,是个动作 */
+.block-add {
+  display: block;
+  flex: 0 0 auto;
+  width: calc(100% - 24px);
+  margin: 0 12px 8px;
+  padding: 6px 0;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.block-add:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ---- 插件 · 语音 ---- */
+
+.vp-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.vp-num {
+  width: 72px;
+}
+.vp-card,
+.vp-profile {
+  grid-template-columns: minmax(0, 1fr);
+}
+.vp-card .pl-actions {
+  grid-column: 1;
+}
+.vp-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-head .sp-group-note {
+  flex: 1;
+  min-width: 0;
+}
+.vp-caret {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.vp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vp-emotions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.vp-emotion {
+  grid-template-columns: 40px minmax(0, 1fr);
+  background: var(--bg-raised);
+}
+.vp-emotion .pl-play {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+.vp-import {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vp-json {
+  width: 100%;
+  max-width: none;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+/* 抽屉可能很窄:标签、8 个格子、合计各占一行。格子默认 4 列两行(喜怒哀惧 / 厌郁惊平),
+   编辑器本身够宽时排成一行 8 列 —— 按编辑器的宽度判断,不按屏幕 */
+.vp-vector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  container-type: inline-size;
+}
+.vp-vector.off .vp-vector-cells {
+  opacity: 0.45;
+}
+.vp-vector-cells {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+@container (min-width: 330px) {
+  .vp-vector-cells {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+}
+.vp-vector-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.vp-vector-cell .text-input {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 2px;
+  text-align: center;
+  /* 上下箭头太占地方;键盘上下键照样能按 0.1 调 */
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.vp-vector-cell .text-input::-webkit-inner-spin-button,
+.vp-vector-cell .text-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.vp-bad {
+  color: #f2b8b8;
+}
+
+/* ---- 插件 · 语音 · 试音台 ---- */
+
+.vb-row {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+.vb-voice {
+  flex: 2 1 160px;
+}
+.vb-emotion {
+  flex: 1 1 120px;
+}
+.vb-main {
+  margin-bottom: 6px;
+}
+.vb-text {
+  width: 100%;
+  max-width: none;
+  resize: vertical;
+  line-height: 1.5;
+}
+.vb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vb-chip {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-dim);
+  transition: border-color 0.12s, color 0.12s;
+}
+.vb-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.vb-params-head {
+  padding: 8px 0 0;
+  border-top: 1px dashed var(--border);
+}
+.vb-toggle {
+  align-items: center;
+}
+.vb-toggle .pl-badge {
+  margin-bottom: 0;
+}
+.vb-dirty {
+  background: #e0b25a;
+}
+.vb-params {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raised);
+}
+.vb-param {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 10px;
+}
+.vb-param-name {
+  font-size: 12px;
+  color: var(--text);
+}
+.vb-param-ctl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.vb-param-ctl input[type='range'] {
+  flex: 1 1 90px;
+  min-width: 0;
+  max-width: 320px;
+  accent-color: var(--accent);
+}
+.vb-param-ctl select.text-input {
+  width: auto;
+  max-width: 100%;
+}
+.vb-param-value {
+  min-width: 44px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.vb-param.is-default .vb-param-value {
+  color: var(--text-faint);
+}
+.vb-param-def {
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.vb-param-note {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.vb-seed {
+  width: 140px;
+}
+.vb-takes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vb-take {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.vb-take.playing {
+  border-color: var(--accent);
+}
+.vb-take-play {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-size: 11px;
+}
+.vb-take.playing .vb-take-play {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.vb-take-head {
+  font-size: 12px;
+  color: var(--text);
+}
+.vb-take-text {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

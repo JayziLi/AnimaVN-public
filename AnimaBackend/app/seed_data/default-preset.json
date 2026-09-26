@@ -1,0 +1,118 @@
+{
+  "prompts": [
+    {
+      "identifier": "main",
+      "name": "主系统提示",
+      "role": "system",
+      "content": "你正在参与一场第一人称视角的角色扮演对话。你需要完全代入 {{char}} 这个角色，用她的语气、性格与知识范围行动和说话，绝不能跳出角色、不要暴露自己是语言模型，也不要替 {{user}} 编写台词或想法。请让叙述保持自然、有画面感，对话与心理活动/动作描写可以穿插出现，动作与神态描写请用括号或星号包裹。回复请使用中文。",
+      "marker": false,
+      "system_prompt": true,
+      "injection_position": 0,
+      "injection_depth": 4,
+      "forbid_overrides": false
+    },
+    {
+      "identifier": "charDescription",
+      "name": "角色描述",
+      "role": "system",
+      "content": "",
+      "marker": true,
+      "system_prompt": false,
+      "injection_position": 0,
+      "injection_depth": 4,
+      "forbid_overrides": false
+    },
+    {
+      "identifier": "charPersonality",
+      "name": "角色性格",
+      "role": "system",
+      "content": "",
+      "marker": true,
+      "system_prompt": false,
+      "injection_position": 0,
+      "injection_depth": 4,
+      "forbid_overrides": false
+    },
+    {
+      "identifier": "scenario",
+      "name": "场景",
+      "role": "system",
+      "content": "",
+      "marker": true,
+      "system_prompt": false,
+      "injection_position": 0,
+      "injection_depth": 4,
+      "forbid_overrides": false
+    },
+    {
+      "identifier": "personaDescription",
+      "name": "玩家人设",
+      "role": "system",
+      "content": "",
+      "marker": true,
+      "system_prompt": false,
+      "injection_position": 0,
+      "injection_depth": 4,
+      "forbid_overrides": false
+    },
+    {
+      "identifier": "dialogueExamples",
+      "name": "示例对话",
+      "role": "system",
+      "content": "",
+      "marker": true,
+      "system_prompt": false,
+      "injection_position": 0,
+      "injection_depth": 4,
+      "forbid_overrides": false
+    },
+    {
+      "identifier": "chatHistory",
+      "name": "对话历史",
+      "role": "system",
+      "content": "",
+      "marker": true,
+      "system_prompt": false,
+      "injection_position": 0,
+      "injection_depth": 4,
+      "forbid_overrides": false
+    },
+    {
+      "identifier": "jailbreak",
+      "name": "结尾指令",
+      "role": "system",
+      "content": "[提醒：继续以 {{char}} 的身份、语气和视角完成这一轮回复，只描写 {{char}} 的言行与心理，不要总结、不要写旁白点评、不要重复以上设定内容。保持在一到三段之间，避免不必要的重复。]",
+      "marker": false,
+      "system_prompt": false,
+      "injection_position": 0,
+      "injection_depth": 4,
+      "forbid_overrides": false
+    }
+  ],
+  "prompt_order": [
+    {
+      "character_id": 100001,
+      "order": [
+        { "identifier": "main", "enabled": true },
+        { "identifier": "charDescription", "enabled": true },
+        { "identifier": "charPersonality", "enabled": true },
+        { "identifier": "scenario", "enabled": true },
+        { "identifier": "personaDescription", "enabled": true },
+        { "identifier": "dialogueExamples", "enabled": true },
+        { "identifier": "chatHistory", "enabled": true },
+        { "identifier": "jailbreak", "enabled": true }
+      ]
+    }
+  ],
+  "wi_format": "{0}",
+  "scenario_format": "[Circumstances and context of the dialogue: {{scenario}}]",
+  "personality_format": "[{{char}}'s personality: {{personality}}]",
+  "group_nudge_prompt": "[Write the next reply only as {{char}}.]",
+  "new_chat_prompt": "[Start a new Chat]",
+  "new_example_chat_prompt": "[Start a new Chat]",
+  "squash_system_messages": true,
+  "temperature": 0.9,
+  "top_p": 0.95,
+  "openai_max_context": 16384,
+  "openai_max_tokens": 700
+}

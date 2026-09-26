@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 旧的 galgame 前端已经删掉(2026-09-24),视觉小说和调试台都在 debug.html 里。
+         这页只负责把根路径 / 转过去,查询参数(比如 ?debug=1)原样带上 -->
+    <meta http-equiv="refresh" content="0; url=/debug.html" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>AnimaVN</title>
+    <script>
+      location.replace('/debug.html' + location.search + location.hash);
+    </script>
+  </head>
+  <body>
+    <a href="/debug.html">打开 AnimaVN</a>
+  </body>
+</html>

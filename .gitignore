@@ -1,0 +1,38 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Browser-automation artifacts (snapshots, screenshots, local test fixtures)
+.playwright-mcp/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+deploy/htpasswd
+
+# Node
+node_modules/
+dist/
+build/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Local data
+*.sqlite
+*.sqlite3
+AnimaBackend/data/*.db
+AnimaBackend/data/*
+!AnimaBackend/data/.gitkeep
+# 情绪识别模型:scripts/download_emotion_model.py 下载,几十 MB,不进仓库
+AnimaBackend/models/

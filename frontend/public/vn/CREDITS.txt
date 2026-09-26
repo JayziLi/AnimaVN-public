@@ -1,0 +1,48 @@
+视觉小说界面的示例素材
+========================
+
+sample-sprites/sylvie-blue-*.png   角色 Sylvie 的四个表情(平静 / 微笑 / 偷笑 / 惊讶)
+bg/uni.jpg                         校园背景
+bg/lecturehall.jpg                 阶梯教室
+bg/club.jpg                        社团活动室(重新压缩过)
+bg/meadow.jpg                      草地(重新压缩过)
+
+来源:Ren'Py 官方示例游戏 "The Question"
+      https://github.com/renpy/renpy/tree/master/the_question/game/images
+
+授权:Ren'Py 的授权页(https://www.renpy.org/doc/html/license.html)写明
+      "The artwork in the demo is released by various copyright holders,
+      under the same terms." —— 即与 Ren'Py 主体相同的 MIT 授权:
+
+  Permission is hereby granted, free of charge, to any person
+  obtaining a copy of this software and associated documentation files
+  (the "Software"), to deal in the Software without restriction,
+  including without limitation the rights to use, copy, modify, merge,
+  publish, distribute, sublicense, and/or sell copies of the Software,
+  and to permit persons to whom the Software is furnished to do so,
+  subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be
+  included in all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+示例场景包的背景音乐
+====================
+
+bgm/carefree.mp3        "Carefree"        Kevin MacLeod (incompetech.com)
+bgm/wallpaper.mp3       "Wallpaper"       Kevin MacLeod (incompetech.com)
+bgm/investigations.mp3  "Investigations"  Kevin MacLeod (incompetech.com)
+bgm/sad-trio.mp3        "Sad Trio"        Kevin MacLeod (incompetech.com)
+
+Licensed under Creative Commons: By Attribution 4.0 License
+http://creativecommons.org/licenses/by/4.0/
+
+修改:从 incompetech.com 的原始 MP3 重新编码为 112kbps,去掉了元数据。
