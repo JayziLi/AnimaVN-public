@@ -9,8 +9,10 @@
    这一版只求流程跑通,配色还是占位,等设计稿再换。 */
 
 .vn-root {
-  --vn-accent: #f4a9c4;
-  --vn-accent-ink: #2b1420;
+  /* 主题色:这里是灰白,VNScreen 按设置在根上改写这三个(默认跟角色,取到立绘的颜色之前是灰白;见 accent.ts) */
+  --vn-accent: #e4e4ea;
+  --vn-accent-ink: #17181f;
+  --vn-accent-rgb: 228, 228, 234;
   --vn-glass: rgba(13, 15, 27, 0.72);
   --vn-glass-strong: rgba(15, 17, 29, 0.94);
   --vn-border: rgba(255, 255, 255, 0.14);
@@ -36,7 +38,9 @@
   /* 比调试台的抽屉高,比全局提示条(toast,100)低:在这里出错也看得到提示 */
   z-index: 90;
   height: 100dvh;
-  overflow: hidden;
+  /* clip 而不是 hidden:按脸对齐后高个子的立绘会伸出屏幕底下,hidden 的容器还能被程序滚动,
+     输入框一拿焦点整个画面就往上滚一截(底下露出黑边);clip 彻底不滚 */
+  overflow: clip;
   background: #000;
   color: var(--vn-text);
   font-family: var(--vn-font);
@@ -78,6 +82,8 @@
   top: var(--vn-sprite-top);
   bottom: 0;
   pointer-events: none;
+  /* 按脸对齐的立绘用 cqh(舞台高度)定位,见 plugins/spriteLayout.ts */
+  container-type: size;
 }
 
 /* 新旧两张图叠在同一个位置交叉淡入淡出,所以用绝对定位 + 水平居中。
@@ -816,7 +822,7 @@
   --text-dim: var(--vn-text-dim);
   --text-faint: rgba(246, 243, 248, 0.42);
   --accent: var(--vn-accent);
-  --accent-dim: rgba(244, 169, 196, 0.3);
+  --accent-dim: rgba(var(--vn-accent-rgb), 0.3);
   --role-system: rgba(246, 243, 248, 0.55);
   --role-user: var(--vn-user);
   --role-assistant: var(--vn-text);
@@ -920,6 +926,10 @@
 .vn-plugin-embed .sp-body {
   max-width: 900px;
 }
+/* 「默认」标记的字色是 --bg,这里的 --bg 是半透明黑,压在主题色底上看不清 */
+.vn-plugin-embed .pl-badge:not(.off) {
+  color: var(--vn-accent-ink);
+}
 .vn-embed .select option {
   background: #15172a;
   color: var(--vn-text);
@@ -971,7 +981,7 @@
   border-color: rgba(255, 255, 255, 0.28);
 }
 .vn-slot.current {
-  border-color: rgba(244, 169, 196, 0.6);
+  border-color: rgba(var(--vn-accent-rgb), 0.6);
 }
 .vn-slot-open {
   position: relative;
@@ -1004,6 +1014,15 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+/* 缩略图里的舞台:和游戏里一样用 cqh 定位立绘 */
+.vn-slot-stage {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6%;
+  bottom: 0;
+  container-type: size;
 }
 .vn-slot-sprite {
   position: absolute;
@@ -1155,6 +1174,18 @@
 .vn-set-label {
   font-size: 14px;
 }
+/* 还在试的功能:名字后面挂个 BETA(设置页、标题画面) */
+.vn-beta {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--vn-accent);
+  color: var(--vn-accent-ink);
+  font: 700 9px / 1 var(--vn-font);
+  letter-spacing: 0.08em;
+  vertical-align: 2px;
+}
 .vn-set-value {
   font-size: 12px;
   color: var(--vn-text-dim);
@@ -1218,12 +1249,29 @@
   cursor: pointer;
 }
 .vn-seg button.on {
-  background: rgba(244, 169, 196, 0.2);
+  background: rgba(var(--vn-accent-rgb), 0.2);
   color: var(--vn-text);
 }
 .vn-seg button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+/* 设置页里选项太多、放不进一排按钮的(封面音乐) */
+.vn-set-select {
+  font: inherit;
+  font-size: 13px;
+  width: max-content;
+  max-width: 100%;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--vn-border);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--vn-text);
+  cursor: pointer;
+}
+.vn-set-select option {
+  background: var(--vn-glass-strong);
+  color: var(--vn-text);
 }
 .vn-keys {
   display: flex;
@@ -1339,193 +1387,6 @@
   margin-left: 8px;
   font-weight: 400;
   color: var(--vn-miss);
-}
-
-/* ══════════ 标题画面 ══════════ */
-
-.vn-title {
-  position: absolute;
-  inset: 0;
-  z-index: 8;
-  overflow: hidden;
-  background: #000;
-  animation: vn-fade-in 0.4s ease both;
-}
-.vn-title-bg {
-  position: absolute;
-  inset: -24px;
-  width: calc(100% + 48px);
-  height: calc(100% + 48px);
-  object-fit: cover;
-  filter: blur(10px) brightness(0.55) saturate(0.9);
-}
-.vn-title-shade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(6, 7, 14, 0.8) 0%, rgba(6, 7, 14, 0.25) 60%, rgba(6, 7, 14, 0.1));
-}
-.vn-title-main {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 40px;
-  padding: calc(env(safe-area-inset-top) + 32px) 32px calc(env(safe-area-inset-bottom) + 32px)
-    calc(env(safe-area-inset-left) + clamp(28px, 8vw, 120px));
-}
-.vn-title-mark {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.vn-title-mark .vn-feather {
-  margin-bottom: 4px;
-}
-.vn-title-mark h1 {
-  margin: 0;
-  font-size: clamp(44px, 8vw, 88px);
-  font-weight: 800;
-  letter-spacing: 0.24em;
-  line-height: 1;
-}
-.vn-title-mark p {
-  margin: 0;
-  font-size: 15px;
-  color: var(--vn-text-dim);
-  letter-spacing: 0.06em;
-}
-.vn-title-menu {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-.vn-title-menu button {
-  font: inherit;
-  font-size: 20px;
-  letter-spacing: 0.2em;
-  padding: 6px 0;
-  border: none;
-  background: none;
-  color: var(--vn-text);
-  cursor: pointer;
-  transition:
-    color 0.15s,
-    transform 0.15s;
-}
-.vn-title-menu button:hover:not(:disabled),
-.vn-title-menu button:focus-visible {
-  color: var(--vn-accent);
-  transform: translateX(6px);
-  outline: none;
-}
-.vn-title-menu button:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-.vn-title-menu button.minor {
-  margin-top: 14px;
-  font-size: 14px;
-  letter-spacing: 0.1em;
-  color: var(--vn-text-dim);
-}
-
-.vn-title-pick {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  overflow-y: auto;
-  padding: calc(env(safe-area-inset-top) + 28px) calc(env(safe-area-inset-right) + 28px)
-    calc(env(safe-area-inset-bottom) + 28px) calc(env(safe-area-inset-left) + 28px);
-}
-.vn-title-pick-head {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-}
-.vn-title-pick-head h2 {
-  margin: 0;
-  font-size: 24px;
-}
-.vn-title-pick-head span {
-  font-size: 13px;
-  color: var(--vn-text-dim);
-}
-.vn-title-pick-head .vn-pill {
-  margin-left: auto;
-}
-.vn-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 16px;
-}
-.vn-card {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 14px;
-  border: 1px solid var(--vn-border);
-  background: rgba(13, 15, 27, 0.6);
-}
-.vn-card.current {
-  border-color: rgba(244, 169, 196, 0.6);
-}
-.vn-card-main {
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.vn-card-main img,
-.vn-card-ph {
-  display: block;
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  object-fit: cover;
-}
-.vn-card-ph {
-  display: grid;
-  place-items: center;
-  font-size: 40px;
-  font-weight: 700;
-  color: var(--vn-text-dim);
-  background: rgba(255, 255, 255, 0.06);
-}
-.vn-card-name {
-  padding: 10px 12px 4px;
-  font-size: 15px;
-  font-weight: 700;
-  text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vn-card-main:hover .vn-card-name {
-  color: var(--vn-accent);
-}
-.vn-card-resume {
-  align-self: flex-start;
-  margin: 0 8px 10px;
-  padding: 3px 8px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: var(--vn-text-dim);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.vn-card-resume:hover {
-  color: var(--vn-text);
-  background: rgba(255, 255, 255, 0.07);
 }
 
 /* ══════════ 加载画面:黑场 + 右下角羽毛 ══════════ */
@@ -1646,13 +1507,6 @@
   }
   .vn-set.wide {
     grid-template-columns: 84px minmax(0, 1fr);
-  }
-  .vn-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .vn-title-menu button {
-    font-size: 18px;
   }
 }
 
@@ -1883,7 +1737,7 @@
   outline-offset: -2px;
 }
 .vn-log-line.current {
-  background: rgba(244, 169, 196, 0.1);
+  background: rgba(var(--vn-accent-rgb), 0.1);
   box-shadow: inset 2px 0 0 var(--vn-accent);
 }
 .vn-log-text {
@@ -1929,6 +1783,36 @@
 .vn-vd-row dd {
   margin: 0;
   word-break: break-word;
+}
+/* 参考音频那几行前面的 ▶:听原声 */
+.vn-vd-play {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 6px;
+  vertical-align: -5px;
+  border: 1px solid var(--vn-border);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vn-text);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+.vn-vd-play:hover:not(:disabled),
+.vn-vd-play.on {
+  border-color: var(--vn-accent);
+  color: var(--vn-accent);
+}
+.vn-vd-play:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.vn-vd-err {
+  display: block;
+  color: #ff8a8a;
+  font-size: 12px;
 }
 .vn-vd-raw {
   margin-top: 8px;

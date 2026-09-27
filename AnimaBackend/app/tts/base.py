@@ -58,3 +58,7 @@ class TTSEngine(Protocol):
     async def ping(self) -> None:
         """只检查连不连得上。失败抛 TTSError。"""
         ...
+
+    async def reference_audio(self, path: str) -> tuple[bytes, str]:
+        """语音服务那台机器上的一段参考音频,原样取回(「语音详情」里试听)。失败抛 TTSError。"""
+        ...

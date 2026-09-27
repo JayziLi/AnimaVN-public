@@ -312,6 +312,28 @@ def test_emotions_from_sprites_uses_builtin_list_when_card_has_no_sprites(client
     assert happy["emo_vector"] == [0.8, 0, 0, 0, 0, 0, 0, 0]
 
 
+def test_emotions_from_sprites_skips_disabled_sprites(client: TestClient, make_card):
+    """规格:语音的情绪候选跟着立绘走,也不含禁用的;立绘全禁用 = 用内置基础表情"""
+    conn = client.post(
+        "/api/tts/connections",
+        json={"name": "IndexTTS", "api_type": "indextts", "base_url": "http://127.0.0.1:9890"},
+    ).json()
+    card = make_card(name="有禁用立绘")
+    sprites = f"/api/tavern/cards/{card['id']}/sprites"
+    ids = {label: client.post(sprites, json={"label": label}).json()["id"] for label in ["平静", "哭泣"]}
+    assert client.put(f"{sprites}/{ids['哭泣']}", json={"enabled": False}).status_code == 200
+
+    v = make_voice(client, conn["id"], name="部分禁用")
+    r = client.post(f"/api/voices/{v['id']}/emotions/from-sprites", json={"card_id": card["id"]})
+    assert [e["label"] for e in r.json()] == ["平静"]
+
+    assert client.put(f"{sprites}/{ids['平静']}", json={"enabled": False}).status_code == 200
+    v2 = make_voice(client, conn["id"], name="全部禁用")
+    r2 = client.post(f"/api/voices/{v2['id']}/emotions/from-sprites", json={"card_id": card["id"]})
+    assert len(r2.json()) == 16
+    assert "哭泣" not in [e["label"] for e in r2.json()]
+
+
 def test_voice_params_are_validated_and_saved_whole(client: TestClient):
     v = make_voice(client, make_conn(client)["id"])
     assert v["params"] == {}

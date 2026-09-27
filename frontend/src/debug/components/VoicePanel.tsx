@@ -21,6 +21,7 @@ import {
 import { BUILTIN_EMOTIONS } from '../plugins/emotions';
 import type { VoicePluginState } from '../plugins/useVoicePlugin';
 import {
+  DEFAULT_VOICE_SAMPLE,
   EMO_MODE_TEXT,
   MAX_WAIT_MAX,
   MAX_WAIT_MIN,
@@ -29,6 +30,8 @@ import {
   missingEmotions,
   normalizeVoiceConfig,
   parseRefFileName,
+  sampleIn,
+  sampleLangOf,
 } from '../plugins/voice';
 import { bgmPlayer } from '../vn/bgm';
 import { voicePlayer } from '../vn/voice';
@@ -36,8 +39,6 @@ import { EmotionVectorEditor } from './EmotionVectorEditor';
 import { CommitField, DeleteButton } from './pluginFields';
 import { errText, formatSize, useRunner, type Notify, type Runner } from './pluginRunner';
 import { VoiceBench } from './VoiceBench';
-
-const DEFAULT_SAMPLE = '你好，今天过得怎么样？我一直在等你。';
 
 const splitList = (v: string) =>
   v
@@ -73,7 +74,7 @@ export function VoicePanel({ voice, card, sprites, notify }: Props) {
     void refresh();
   }, [refresh]);
   // 试听文本:试音台和情绪表里的 ▶ 共用
-  const [sample, setSample] = useState(DEFAULT_SAMPLE);
+  const [sample, setSample] = useState(DEFAULT_VOICE_SAMPLE);
 
   return (
     <>
@@ -94,7 +95,7 @@ function SettingsGroup({ voice }: { voice: VoicePluginState }) {
       <div className="sp-group-head">
         <span className="sp-group-title">设置</span>
         <span className="sp-group-note">
-          视觉小说里念角色的台词;旁白和你说的话不念。情绪跟着这句的立绘表情走,不用加提示词。全局通用,手机和电脑同步。
+          视觉小说里念角色的台词;旁白和你说的话不念。情绪默认跟着这句的立绘表情走,不用加提示词。全局通用,手机和电脑同步。
         </span>
       </div>
       <label className="vp-check">
@@ -141,6 +142,32 @@ function SettingsGroup({ voice }: { voice: VoicePluginState }) {
             }
           />
           <span className="sp-group-note">秒。超时先出文字,语音好了再补上</span>
+        </div>
+      )}
+      <div className="pl-row">
+        <span className="conn-label">语音情绪</span>
+        <label className="vp-check">
+          <input
+            type="radio"
+            name="vp-emotion"
+            checked={!config.fixedEmotion}
+            onChange={() => changeConfig({ ...config, fixedEmotion: false })}
+          />
+          跟着立绘表情变(默认)
+        </label>
+        <label className="vp-check">
+          <input
+            type="radio"
+            name="vp-emotion"
+            checked={config.fixedEmotion}
+            onChange={() => changeConfig({ ...config, fixedEmotion: true })}
+          />
+          不变
+        </label>
+      </div>
+      {config.fixedEmotion && (
+        <div className="sp-group-note">
+          每句都用声音情绪表里排第一的那行念,立绘照样换表情。想换成别的语气,在下面「声音」里把那一行挪到第一。
         </div>
       )}
     </div>
@@ -578,7 +605,8 @@ function EmotionTable({
       const r = await debugApi.speak({
         profile_id: p.id,
         emotion: e.label,
-        text: sample.trim() || DEFAULT_SAMPLE,
+        // 框里是内置例句的话,换成这个声音念的语言那一版
+        text: sampleIn(sample.trim() || DEFAULT_VOICE_SAMPLE, sampleLangOf(p.text_lang)),
       });
       await voicePlayer.playBuffer(r.audio);
       setPreview((s) => ({
@@ -709,7 +737,7 @@ function CardGroup({
   card: { id: string; name: string } | null;
   sprites: CardSprite[];
 }) {
-  const { binding, profiles, bind, cast, connections } = voice;
+  const { binding, profiles, bind, cast, connections, config } = voice;
   if (!card) {
     return (
       <div className="sp-group">
@@ -790,7 +818,10 @@ function CardGroup({
           「{main.name}」还没有情绪行,每句都沿用音色参考的语气。可以在上面展开这个声音,点「按立绘表情补齐」。
         </div>
       )}
-      {main && main.emotions.length > 0 && missing.length > 0 && (
+      {main && main.emotions.length > 0 && config.fixedEmotion && (
+        <div className="sp-group-note">语音情绪设成了不变:「{main.name}」每句都用「{main.emotions[0].label}」念。</div>
+      )}
+      {main && main.emotions.length > 0 && !config.fixedEmotion && missing.length > 0 && (
         <div className="sp-group-note">
           {sprites.length > 0 ? '这些立绘表情' : '这张卡没配立绘,用的是内置基础表情。这些'}在「{main.name}」的情绪表里没有,会用情绪识别模型挑最接近的一行念(模型没装时用默认「{main.emotions[0].label}」)。想指定的话,给那一行加别名:
           {missing.join('、')}

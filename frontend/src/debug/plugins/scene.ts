@@ -127,6 +127,15 @@ export interface SceneState {
 export const backgroundsOf = (assets: readonly SceneAsset[]) => assets.filter((a) => a.kind === 'bg');
 export const bgmsOf = (assets: readonly SceneAsset[]) => assets.filter((a) => a.kind === 'bgm');
 
+/**
+ * 标题画面(封面)放哪首:包里设了、这首还在(没删、没禁用)就放它,否则放排第一的。
+ * assets 传游戏里用的那份(已经滤掉禁用的)
+ */
+export function titleBgmOf(assets: readonly SceneAsset[], titleBgmId: string | null): SceneAsset | null {
+  const bgms = bgmsOf(assets);
+  return bgms.find((a) => a.id === titleBgmId) ?? bgms[0] ?? null;
+}
+
 /** 对话开头的状态:排第一的背景,以及它的默认曲 */
 export function initialScene(assets: readonly SceneAsset[]): SceneState {
   const bg = backgroundsOf(assets)[0] ?? null;

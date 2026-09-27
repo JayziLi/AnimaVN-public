@@ -356,6 +356,27 @@ def explain(req: TtsExplainIn, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/reference")
+async def reference_audio(profile_id: str, path: str, db: Session = Depends(get_db)):
+    """声音配的一段参考音频(音色参考,或者某一行情绪的参考),从语音服务那台机器上原样取回 ——
+    「语音详情」里试听原声用。只放行这个声音自己配过的路径,不做成能读任意文件的转发"""
+    profile = db.get(VoiceProfile, profile_id)
+    if profile is None:
+        raise HTTPException(404, "声音不存在")
+    known = {profile.ref_path, *(e.ref_path for e in list_emotions(profile.id, db))}
+    if not path or path not in known:
+        raise HTTPException(404, "这个声音没有配这段参考音频")
+    conn = db.get(TtsConnection, profile.connection_id)
+    if conn is None:
+        raise HTTPException(400, f"声音「{profile.name}」没有选语音服务")
+    try:
+        data, mime = await _engine(conn).reference_audio(path)
+    except TTSError as e:
+        raise HTTPException(e.status, e.message) from e
+    # 同一段在一次打开里常会反复听;台式机上换了文件,最多十分钟后听到新的
+    return Response(content=data, media_type=mime, headers={"Cache-Control": "private, max-age=600"})
+
+
 @router.post("/warmup", response_model=TtsTimingOut)
 async def warmup(req: TtsWarmupIn, db: Session = Depends(get_db)):
     """用这个声音的默认情绪合成一句,不进缓存。服务刚启动时要等 30–40 秒。"""

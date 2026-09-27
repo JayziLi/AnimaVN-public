@@ -12,7 +12,7 @@ from typing import Any, Literal
 import httpx
 
 from app.tts.base import TTSError, VoiceSpec
-from app.tts.http import make_tts_client, transport_error
+from app.tts.http import REF_TIMEOUT, make_tts_client, read_reference, transport_error
 
 COLD_TIMEOUT = 90.0
 WARM_TIMEOUT = 30.0
@@ -95,6 +95,13 @@ class IndexTtsEngine:
             body = None
         if not (isinstance(body, dict) and body.get("ready")):
             raise TTSError(503, "IndexTTS 还在加载模型")
+
+    async def reference_audio(self, path: str) -> tuple[bytes, str]:
+        try:
+            async with make_tts_client(self.base_url, REF_TIMEOUT) as client:
+                return await read_reference(client, self.base_url, "IndexTTS", path)
+        except httpx.HTTPError as e:
+            raise self._transport_error(e) from e
 
     async def _run(self, text: str, voice: VoiceSpec, timeout: float) -> tuple[bytes, str]:
         try:

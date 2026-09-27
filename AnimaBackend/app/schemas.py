@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.llm.thinking import ThinkingLevel
+
 ApiType = Literal["openai_compatible", "anthropic", "mock"]
 
 
@@ -39,12 +41,14 @@ class ConnectionCreate(BaseModel):
     api_key: str | None = None
     model: str = ""
     stream: bool = True
+    thinking: ThinkingLevel | None = None
 
 
 class ConnectionUpdate(BaseModel):
     """Partial update: omitted fields keep their current value.
 
     api_key: omit to keep the stored key, send "" or null to clear it.
+    thinking: omit to keep, null = back to the service default.
     """
 
     name: str | None = None
@@ -53,6 +57,7 @@ class ConnectionUpdate(BaseModel):
     api_key: str | None = None
     model: str | None = None
     stream: bool | None = None
+    thinking: ThinkingLevel | None = None
 
 
 class ConnectionOut(BaseModel):
@@ -64,6 +69,7 @@ class ConnectionOut(BaseModel):
     has_api_key: bool
     is_active: bool
     stream: bool
+    thinking: str | None
     cached_models: list[str]
     cached_models_at: datetime | None
 
@@ -273,6 +279,7 @@ class CardSpriteUpdate(BaseModel):
     label: str | None = None
     aliases: list[str] | None = None
     description: str | None = None
+    enabled: bool | None = None
 
 
 class CardSpriteOut(BaseModel):
@@ -286,12 +293,32 @@ class CardSpriteOut(BaseModel):
     # 浏览器就不会继续用缓存里的旧图
     image_version: int
     sort: int
+    # 禁用的立绘游戏里不用,但留在表里
+    enabled: bool
+    # {"width", "height", "face": {"x","y","w","h"} | null},位置是占整张图的比例;null = 还没找过脸
+    face_scan: dict[str, Any] | None
 
 
 class SpriteReorderRequest(BaseModel):
     """这张卡全部立绘的 id,按新顺序排。必须一个不多一个不少。"""
 
     ids: list[str]
+
+
+class SpriteLayoutOut(BaseModel):
+    auto: bool
+    zoom: float
+    dx: float
+    dy: float
+
+
+class SpriteLayoutUpdate(BaseModel):
+    """全部可选,只改传了的。dx / dy 以舞台高度为单位"""
+
+    auto: bool | None = None
+    zoom: float | None = Field(default=None, ge=0.3, le=3)
+    dx: float | None = Field(default=None, ge=-2, le=2)
+    dy: float | None = Field(default=None, ge=-2, le=2)
 
 
 # ── 场景包(背景 + BGM 插件) ────────────────────────────────
@@ -305,6 +332,8 @@ class ScenePackIn(BaseModel):
 class ScenePackUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
+    # 显式传 null = 回到默认(排第一的那首);不传 = 不改
+    title_bgm_id: str | None = None
 
 
 class ScenePackOut(BaseModel):
@@ -315,6 +344,8 @@ class ScenePackOut(BaseModel):
     bgm_count: int
     # 绑了这个包的卡有几张 —— 删包前让人心里有数
     card_count: int
+    # 标题画面放的那首;null = 放排第一的
+    title_bgm_id: str | None = None
 
 
 SceneKind = Literal["bg", "bgm"]
@@ -335,6 +366,7 @@ class SceneAssetUpdate(BaseModel):
     description: str | None = None
     focus_x: int | None = Field(default=None, ge=0, le=100)
     bgm_id: str | None = None
+    enabled: bool | None = None
 
 
 class SceneAssetOut(BaseModel):
@@ -352,6 +384,8 @@ class SceneAssetOut(BaseModel):
     focus_x: int
     bgm_id: str | None
     sort: int
+    # 禁用的素材游戏里不用,但留在包里;禁用的曲子仍可以是某个背景的默认曲(游戏里不放)
+    enabled: bool
 
 
 class SceneAssetReorder(BaseModel):

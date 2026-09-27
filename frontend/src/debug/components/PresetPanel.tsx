@@ -63,6 +63,15 @@ interface Props {
   onDelete: () => void;
   onImport: () => void;
   onExport: () => void;
+  /** 「绑定到当前角色卡」的快捷勾选;没选卡、没选预设时不传 */
+  cardBinding?: {
+    cardName: string;
+    /** 这张卡绑的预设名;没绑是 null */
+    boundName: string | null;
+    /** 当前这套就是这张卡绑的 */
+    bound: boolean;
+    onToggle: (on: boolean) => void;
+  };
 }
 
 function badgeFor(prompt: PresetPrompt | undefined): { cls: string; text: string } {
@@ -102,6 +111,7 @@ export function PresetPanel({
   onDelete,
   onImport,
   onExport,
+  cardBinding,
 }: Props) {
   /** 编辑弹窗开在哪个块上 —— 点行头或 ✎ 都开它 */
   const [detailOf, setDetailOf] = useState<string | null>(null);
@@ -316,6 +326,25 @@ export function PresetPanel({
           )}
         </div>
       </div>
+
+      {cardBinding && (
+        <div className="preset-bind">
+          <label className="vp-check">
+            <input
+              type="checkbox"
+              checked={cardBinding.bound}
+              disabled={busy}
+              onChange={(e) => cardBinding.onToggle(e.target.checked)}
+            />
+            绑定到当前角色卡「{cardBinding.cardName}」
+          </label>
+          {cardBinding.boundName && !cardBinding.bound && (
+            <span className="preset-bind-note">
+              这张卡绑的是「{cardBinding.boundName}」,现在临时用的这套;勾上就改绑成这套
+            </span>
+          )}
+        </div>
+      )}
 
       {preset && (
         <button

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { StoredCard } from '../lib/api';
 import type { TavernCard } from '../lib/cardParser';
 import { estimateTokens, formatTokens } from '../lib/tokens';
@@ -41,6 +41,8 @@ interface Props {
   onExport: () => void;
   onOpenAdvanced: () => void;
   onPickAvatar: () => void;
+  /** 头像下面的「绑定」一栏(CardBindings),由 DebugApp 填好传进来 */
+  bindings?: ReactNode;
 }
 
 const SAVE_LABEL: Record<SaveState, string> = {
@@ -70,6 +72,7 @@ export function CardPanel({
   onExport,
   onOpenAdvanced,
   onPickAvatar,
+  bindings,
 }: Props) {
   const [showNotes, setShowNotes] = useState(false);
   const [greetingIndex, setGreetingIndex] = useState(0);
@@ -202,7 +205,6 @@ export function CardPanel({
       )}
 
       {view === 'editor' && card && (
-        <>
         <div className="panel-body card-fields">
           <div className="card-hero">
             <button
@@ -240,6 +242,8 @@ export function CardPanel({
             </div>
           </div>
 
+          {bindings}
+
           {/* 创作者的注释:折叠,和酒馆一样默认收起 */}
           <div className="field-row">
             <div className="field-head" onClick={() => setShowNotes((v) => !v)}>
@@ -257,6 +261,17 @@ export function CardPanel({
                 />
               </div>
             )}
+          </div>
+
+          {/* 高级设置:和创作者的注释同一种小行,点开是完整的角色卡编辑抽屉(按装配顺序排)。
+              工具行右边的滑块图标是同一个入口 */}
+          <div className="field-row">
+            <button type="button" className="field-head field-head-btn" onClick={onOpenAdvanced} disabled={busy}>
+              <span className="field-name">
+                高级设置<span className="field-name-sub"> · 性格 / 情景 / 对话示例 / 提示词覆盖</span>
+              </span>
+              <span className="field-empty-mark">打开 ›</span>
+            </button>
           </div>
 
           {/* 一级正文字段之一:角色描述 —— grow 让框撑满剩余空白 */}
@@ -327,14 +342,6 @@ export function CardPanel({
             </div>
           </div>
         </div>
-
-        {/* 底部入口:整条「高级设置」—— 抽屉里是完整的角色卡编辑,按装配顺序排 */}
-        <button className="card-adv-btn" onClick={onOpenAdvanced} disabled={busy}>
-          <AnimaIcon name="sliders" size={16} />
-          <span>高级设置</span>
-          <span className="card-adv-sub">性格 / 情景 / 对话示例 / 提示词覆盖</span>
-        </button>
-        </>
       )}
     </div>
   );

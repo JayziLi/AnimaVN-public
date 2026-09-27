@@ -8,6 +8,7 @@ from app.llm.errors import LLMError
 from app.llm.mock_provider import MockProvider
 from app.llm.openai_provider import OpenAICompatibleProvider
 from app.llm.registry import provider_for
+from app.llm.thinking import anthropic_params, openai_params
 from app.models import ApiConnection
 
 
@@ -33,6 +34,18 @@ def test_registry_selects_provider_for_each_supported_api_type(monkeypatch):
     assert isinstance(mock, MockProvider)
     assert isinstance(openai, OpenAICompatibleProvider)
     assert isinstance(anthropic, AnthropicProvider)
+
+
+def test_registry_hands_the_connections_thinking_level_to_the_provider(monkeypatch):
+    monkeypatch.setattr("app.llm.openai_provider.make_http_client", lambda: None)
+    monkeypatch.setattr("app.llm.anthropic_provider.make_http_client", lambda: None)
+    openai_conn = connection("openai_compatible")
+    openai_conn.thinking = "off"
+    anthropic_conn = connection("anthropic", api_key="secret")
+    anthropic_conn.thinking = "low"
+
+    assert provider_for(openai_conn)._extra == openai_params("off")
+    assert provider_for(anthropic_conn)._extra == anthropic_params("low")
 
 
 def test_anthropic_connection_requires_api_key():

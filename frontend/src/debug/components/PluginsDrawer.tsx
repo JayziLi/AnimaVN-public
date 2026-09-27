@@ -7,7 +7,7 @@ import {
   type EmotionStatus,
   type SceneKind,
 } from '../lib/api';
-import type { BlockState, PluginConfig } from '../plugins/common';
+import { enabledOnly, type BlockState, type PluginConfig } from '../plugins/common';
 import type { LangPluginConfig } from '../plugins/lang';
 import type { PlayerPluginConfig } from '../plugins/player';
 import {
@@ -26,11 +26,13 @@ import {
   type SpritePluginConfig,
 } from '../plugins/sprite';
 import type { ScenePluginState } from '../plugins/useScenePlugin';
+import type { SpriteLayoutState } from '../plugins/useSpriteLayout';
 import type { VoicePluginState } from '../plugins/useVoicePlugin';
 import { bgmPlayer, useBgm } from '../vn/bgm';
 import { CommitField, DeleteButton } from './pluginFields';
 import { LangPanel } from './LangPanel';
 import { PlayerPanel } from './PlayerPanel';
+import { SpritePosition } from './SpritePosition';
 import { errText, formatSize, useRunner } from './pluginRunner';
 import { VoicePanel } from './VoicePanel';
 
@@ -76,7 +78,11 @@ interface Props {
     block: BlockControls;
     sprites: CardSprite[];
     onSpritesChange: (cardId: string, next: CardSprite[]) => void;
+    /** 立绘在游戏里怎么摆 */
+    layout: SpriteLayoutState;
   };
+  /** 全部角色卡,立绘位置预览里拿来对照 */
+  cards: { id: string; name: string }[];
 
   scene: ScenePluginState;
   sceneBlocks: Record<SceneKindKey, BlockControls>;
@@ -228,7 +234,7 @@ export function PluginsDrawer(props: Props) {
             <VoicePanel
               voice={props.voice}
               card={props.card}
-              sprites={props.sprite.sprites}
+              sprites={enabledOnly(props.sprite.sprites)}
               notify={props.notify}
             />
           )}
@@ -477,6 +483,8 @@ function EmotionModelStatus() {
 
 function SpriteSection({
   sprite,
+  scene,
+  cards,
   presetName,
   presetDirty,
   presetBusy,
@@ -485,7 +493,7 @@ function SpriteSection({
   notify,
 }: Props) {
   const { config, onChangeConfig, block, sprites, onSpritesChange } = sprite;
-  const macros = spriteMacros(config, sprites);
+  const macros = spriteMacros(config, enabledOnly(sprites));
 
   return (
     <>
@@ -523,11 +531,34 @@ function SpriteSection({
 
       <div className="sp-group">
         <div className="sp-group-head">
+          <span className="sp-group-title">位置{card ? ` · ${card.name || '(未命名)'}` : ''}</span>
+          <span className="sp-group-note">
+            所有角色按脸对齐:脸一样大、头在同一高度,换角色、换表情时人不会忽大忽小。上传立绘时自动找脸;
+            不满意可以在画面上拖动、放大缩小,或者调所有角色共用的人物大小和头的高度。
+          </span>
+        </div>
+        {card ? (
+          <SpritePosition
+            key={card.id}
+            card={card}
+            sprites={sprites}
+            sceneAssets={scene.assets}
+            cards={cards}
+            state={sprite.layout}
+          />
+        ) : (
+          <div className="sp-empty">先在右栏选一张角色卡。</div>
+        )}
+      </div>
+
+      <div className="sp-group">
+        <div className="sp-group-head">
           <span className="sp-group-title">
             表情映射{card ? ` · ${card.name || '(未命名)'}` : ''}
           </span>
           <span className="sp-group-note">
             每张卡一套。AI 写的表情名(或别名)对上哪一行,就换成那一行的图;对不上的由情绪识别模型挑最像的一行。排第一的是默认表情。
+            不想用的点「禁用」:游戏里当它不存在,图和名字都留着,随时能再启用。
           </span>
         </div>
         {card ? (
@@ -610,6 +641,14 @@ function SpriteTable({
       await debugApi.updateSprite(cardId, spriteId, patch);
     });
 
+  const setEnabled = (spriteId: string, enabled: boolean) =>
+    run(enabled ? '启用' : '禁用', async () => {
+      await debugApi.updateSprite(cardId, spriteId, { enabled });
+    });
+
+  /** 默认表情 = 排在最前面的、没禁用的那张 */
+  const defaultId = sprites.find((s) => s.enabled)?.id ?? null;
+
   return (
     <div className="pl-sprites">
       <div className="pl-row">
@@ -669,10 +708,10 @@ function SpriteTable({
         </div>
       ) : (
         <div className="pl-sprite-list">
-          {sprites.map((s, i) => {
+          {sprites.map((s) => {
             const url = spriteImageUrl(s);
             return (
-              <div key={s.id} className="pl-sprite">
+              <div key={s.id} className={`pl-sprite${s.enabled ? '' : ' off'}`}>
                 <button
                   className="pl-thumb"
                   title={url ? '点击换图' : '点击上传图片'}
@@ -687,14 +726,19 @@ function SpriteTable({
                 <LabelFields
                   noun="表情名"
                   item={s}
-                  isDefault={i === 0}
+                  isDefault={s.id === defaultId}
                   descPlaceholder="给 AI 看的:什么时候用这个表情"
                   onCommit={(patch) => update(s.id, patch)}
                 />
                 <div className="pl-actions">
+                  <EnableButton
+                    enabled={s.enabled}
+                    disabled={!!busy}
+                    onChange={(on) => void setEnabled(s.id, on)}
+                  />
                   <button
                     className="btn small"
-                    disabled={i === 0 || !!busy}
+                    disabled={s.id === defaultId || !s.enabled || !!busy}
                     onClick={() =>
                       void run('排序', async () => {
                         await debugApi.reorderSprites(cardId, [
@@ -725,6 +769,28 @@ function SpriteTable({
   );
 }
 
+/** 禁用 / 启用:禁用的素材游戏里当作不存在,但留着,不用删 */
+function EnableButton({
+  enabled,
+  disabled,
+  onChange,
+}: {
+  enabled: boolean;
+  disabled: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  return (
+    <button
+      className={`btn small${enabled ? '' : ' accent'}`}
+      disabled={disabled}
+      onClick={() => onChange(!enabled)}
+      title={enabled ? '游戏里不再用它,素材留着,随时能再启用' : '重新在游戏里用它'}
+    >
+      {enabled ? '禁用' : '启用'}
+    </button>
+  );
+}
+
 /** 名字 / 别名 / 说明三格,立绘和场景素材共用 */
 function LabelFields({
   noun,
@@ -735,7 +801,7 @@ function LabelFields({
   children,
 }: {
   noun: string;
-  item: { label: string; aliases: string[]; description: string };
+  item: { label: string; aliases: string[]; description: string; enabled: boolean };
   isDefault: boolean;
   descPlaceholder: string;
   onCommit: (patch: { label?: string; aliases?: string[]; description?: string }) => Promise<boolean>;
@@ -745,7 +811,13 @@ function LabelFields({
     <div className="pl-fields">
       <div className="pl-field-row">
         <CommitField label={noun} value={item.label} onCommit={(v) => onCommit({ label: v })} />
-        {isDefault && <span className="pl-badge">默认</span>}
+        {!item.enabled ? (
+          <span className="pl-badge off" title="游戏里不用它">
+            已禁用
+          </span>
+        ) : (
+          isDefault && <span className="pl-badge">默认</span>
+        )}
       </div>
       <CommitField
         label="别名"
@@ -854,6 +926,8 @@ function SceneSection({
             {kind === 'bg'
               ? '排第一的是默认场景。每个场景可以指定一首默认音乐:换到这个场景时自动换上。'
               : '按气氛起名(日常、温馨、紧张、伤感…),AI 看名字和说明挑曲子;真正的曲名写在说明里。'}
+            不想用的点「禁用」:游戏里当它不存在,文件留在包里,随时能再启用。
+            {pack && pack.card_count > 1 && `这个包有 ${pack.card_count} 张卡在用,禁用对它们都生效。`}
           </span>
         </div>
         {!card ? (
@@ -1109,6 +1183,12 @@ function useAssetOps(packId: string, kind: SceneKind, scene: ScenePluginState, n
       run('删除', async () => {
         await debugApi.deleteSceneAsset(packId, assetId);
       }),
+    setEnabled: (assetId: string, enabled: boolean) =>
+      run(enabled ? '启用' : '禁用', async () => {
+        await debugApi.updateSceneAsset(packId, assetId, { enabled });
+      }),
+    /** 默认 = 排在最前面的、没禁用的那个 */
+    defaultId: mine.find((a) => a.enabled)?.id ?? null,
     makeDefault: (assetId: string) =>
       run('排序', async () => {
         await debugApi.reorderSceneAssets(packId, kind, [
@@ -1183,10 +1263,10 @@ function BgTable({
         </div>
       ) : (
         <div className="pl-sprite-list">
-          {backgroundsOf(ops.mine).map((a, i) => {
+          {backgroundsOf(ops.mine).map((a) => {
             const url = sceneFileUrl(a);
             return (
-              <div key={a.id} className="pl-sprite pl-scene bg">
+              <div key={a.id} className={`pl-sprite pl-scene bg${a.enabled ? '' : ' off'}`}>
                 <button
                   className="pl-thumb pl-thumb-wide"
                   title={url ? '点击换图' : '点击上传图片'}
@@ -1201,7 +1281,7 @@ function BgTable({
                 <LabelFields
                   noun="场景名"
                   item={a}
-                  isDefault={i === 0}
+                  isDefault={a.id === ops.defaultId}
                   descPlaceholder="给 AI 看的:这是什么地方"
                   onCommit={(patch) => ops.update(a.id, patch)}
                 >
@@ -1216,7 +1296,7 @@ function BgTable({
                       <option value="">不换(沿用之前的音乐)</option>
                       {bgms.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.label}
+                          {m.enabled ? m.label : `${m.label}(已禁用,游戏里不放)`}
                         </option>
                       ))}
                     </select>
@@ -1230,9 +1310,14 @@ function BgTable({
                   )}
                 </LabelFields>
                 <div className="pl-actions">
+                  <EnableButton
+                    enabled={a.enabled}
+                    disabled={!!busy}
+                    onChange={(on) => void ops.setEnabled(a.id, on)}
+                  />
                   <button
                     className="btn small"
-                    disabled={i === 0 || !!busy}
+                    disabled={a.id === ops.defaultId || !a.enabled || !!busy}
                     onClick={() => void ops.makeDefault(a.id)}
                     title="挪到第一个 —— 对话里还没写场景标签时用它"
                   >
@@ -1372,7 +1457,7 @@ function BgmTable({
             const on = url !== null && bgm.preview === url;
             const used = usedBy(a.id);
             return (
-              <div key={a.id} className="pl-sprite pl-scene">
+              <div key={a.id} className={`pl-sprite pl-scene${a.enabled ? '' : ' off'}`}>
                 <button
                   className={`pl-thumb pl-play${on ? ' on' : ''}`}
                   title={url ? (on ? '停止试听' : '试听') : '还没传文件'}
@@ -1398,6 +1483,11 @@ function BgmTable({
                   </div>
                 </LabelFields>
                 <div className="pl-actions">
+                  <EnableButton
+                    enabled={a.enabled}
+                    disabled={!!busy}
+                    onChange={(on) => void ops.setEnabled(a.id, on)}
+                  />
                   <button
                     className="btn small"
                     disabled={!!busy}

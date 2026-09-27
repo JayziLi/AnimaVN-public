@@ -29,6 +29,8 @@ export interface VoicePluginConfig {
   waitForVoice: boolean;
   /** 等语音最多等几秒;超时先出文字,语音好了再补上 */
   maxWaitSec: number;
+  /** 情绪不变:主声音每句都用情绪表排第一的那行(默认情绪),不跟着立绘表情换 */
+  fixedEmotion: boolean;
 }
 
 export const DEFAULT_VOICE_CONFIG: VoicePluginConfig = {
@@ -36,6 +38,7 @@ export const DEFAULT_VOICE_CONFIG: VoicePluginConfig = {
   // 默认不等:文字直接出,语音在后台合成,好了就念(对话框里文字后面转个圈表示还在合成)
   waitForVoice: false,
   maxWaitSec: 3,
+  fixedEmotion: false,
 };
 
 export const MAX_WAIT_MIN = 1;
@@ -51,6 +54,7 @@ export function normalizeVoiceConfig(raw: unknown): VoicePluginConfig {
       typeof r.maxWaitSec === 'number' && Number.isFinite(r.maxWaitSec)
         ? Math.min(MAX_WAIT_MAX, Math.max(MAX_WAIT_MIN, Math.round(r.maxWaitSec)))
         : d.maxWaitSec,
+    fixedEmotion: typeof r.fixedEmotion === 'boolean' ? r.fixedEmotion : d.fixedEmotion,
   };
 }
 
@@ -127,7 +131,8 @@ export function spriteLabelAfter(
 /**
  * 当前这条回复里每一句怎么念;不念的是 null。
  * 主声音的情绪 = 这句生效的表情(匹配之后的名字);其他声音不传情绪(用它们的默认情绪)。
- * 影响这句的标签还在问模型时先不念(和流式没写完一样),免得用错的情绪合成进缓存
+ * 影响这句的标签还在问模型时先不念(和流式没写完一样),免得用错的情绪合成进缓存。
+ * 设置里选了情绪不变时,主声音也不传情绪,也就不用等模型
  */
 export function planVoiceLines(o: {
   lines: readonly VNLine[];
@@ -139,6 +144,8 @@ export function planVoiceLines(o: {
   cast: VoiceCast;
   /** 流式时最后一句还在写,写完才念 */
   streaming: boolean;
+  /** 情绪不变(插件设置) */
+  fixedEmotion: boolean;
 }): (SpeakRequest | null)[] {
   return o.lines.map((ln, i) => {
     if (o.streaming && i === o.lines.length - 1) return null;
@@ -151,7 +158,7 @@ export function planVoiceLines(o: {
     if (said === null) return null;
     const text = cleanSpeech(said);
     if (!hasSpeakable(text)) return null;
-    if (profile.id !== o.cast.main?.id) return { profile_id: profile.id, emotion: null, text };
+    if (o.fixedEmotion || profile.id !== o.cast.main?.id) return { profile_id: profile.id, emotion: null, text };
     const upTo = spriteHitsUpTo(o.hits, i, o.ctx.charName);
     if (upTo.some((h) => o.ctx.resolve(h.label).state === 'pending')) return null;
     return { profile_id: profile.id, emotion: spriteLabelAfter(upTo, o.ctx, o.emotionBefore), text };
@@ -399,4 +406,52 @@ export function draftSummary(d: VoiceDraft, engine: TtsApiType): string {
     if (d.params.parallel_infer === false) parts.push('关并行推理');
   }
   return parts.join(' · ');
+}
+
+// ---- 试听例句(试音台、情绪表里的 ▶) ----
+
+export type SampleLang = 'zh' | 'ja';
+
+/** 常用试听句:中文、日文各一套,同一个下标是同一句话 */
+export const VOICE_SAMPLES: Record<SampleLang, { name: string; text: string }[]> = {
+  zh: [
+    { name: '日常', text: '你好，今天过得怎么样？我一直在等你。' },
+    { name: '开心', text: '太好了！我就知道你一定可以做到的！' },
+    { name: '难过', text: '……没关系的，我一个人也可以。你不用担心我。' },
+    { name: '惊讶', text: '诶？！真的吗？你什么时候回来的？' },
+    { name: '生气', text: '你到底有没有在听我说话啊！' },
+    {
+      name: '长句',
+      text: '其实我一直想告诉你，那天在车站分开之后，我每天都会想起你说过的话。虽然不知道你还记不记得，但对我来说，那是很重要的约定。',
+    },
+  ],
+  ja: [
+    { name: '日常', text: 'おかえりなさい。今日はどうだった？ずっと待ってたんだよ。' },
+    { name: '开心', text: 'やった！絶対できるって信じてたよ！' },
+    { name: '难过', text: '……大丈夫。一人でも平気だから、心配しないで。' },
+    { name: '惊讶', text: 'えっ？！本当に？いつ帰ってきたの？' },
+    { name: '生气', text: 'ちょっと、ちゃんと話聞いてるの？' },
+    {
+      name: '长句',
+      text: '実はずっと言いたかったんだ。あの日駅で別れてから、あなたの言葉を毎日思い出してた。覚えてるかわからないけど、私にとっては大切な約束なんだ。',
+    },
+  ],
+};
+
+export const DEFAULT_VOICE_SAMPLE = VOICE_SAMPLES.zh[0].text;
+
+/** 声音念的语言 → 用哪套例句:日语用日文的,其他(中文、自动……)用中文的 */
+export const sampleLangOf = (textLang: string): SampleLang => (textLang === 'ja' ? 'ja' : 'zh');
+
+/**
+ * 文本是内置例句的话,换成同一句的另一种语言;自己写的句子原样返回。
+ * 换声音时用:日语声音别去念框里剩下的中文例句
+ */
+export function sampleIn(text: string, lang: SampleLang): string {
+  const t = text.trim();
+  for (const list of Object.values(VOICE_SAMPLES)) {
+    const i = list.findIndex((s) => s.text === t);
+    if (i !== -1) return VOICE_SAMPLES[lang][i].text;
+  }
+  return text;
 }

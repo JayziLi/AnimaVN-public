@@ -16,6 +16,8 @@ dependencies = [
     "onnxruntime>=1.17",
     "tokenizers>=0.15",
     "numpy>=1.26",
+    # 立绘按脸对齐(app/sprite_faces.py);5.x 把级联分类器挪出了主包
+    "opencv-python-headless>=4.8,<5",
 ]
 
 [project.optional-dependencies]

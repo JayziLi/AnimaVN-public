@@ -843,6 +843,21 @@ body.dragging-columns {
   background: var(--bg);
 }
 
+/* 预设面板:「绑定到当前角色卡」 */
+.preset-bind {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 12px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.preset-bind-note {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .preset-select {
   flex: 1;
   min-width: 0;
@@ -1364,6 +1379,31 @@ body.dragging-columns {
   border-bottom: 1px solid var(--border);
 }
 
+/* 角色卡编辑器头像下面的「绑定」:玩家身份、预设各一行 */
+.card-bind {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.card-bind-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-bind-label {
+  flex: none;
+  width: 4.5em;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.card-bind-row .select {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+
 .card-avatar {
   width: 56px;
   height: 56px;
@@ -1591,32 +1631,19 @@ body.dragging-columns {
 }
 
 /* 面板底部的「高级设置」入口:常驻可见,不跟着面板内容滚走 */
-.card-adv-btn {
-  flex-shrink: 0;
-  margin: 10px 12px 12px;
-  padding: 9px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  background: var(--bg-raised);
-  color: var(--text-dim);
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: color 0.12s, border-color 0.12s;
+/* 整行是按钮的折叠行(角色卡的「高级设置」):长得和能展开的那种一样 */
+.field-head-btn {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
 }
-.card-adv-btn:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--accent-dim);
-}
-.card-adv-btn:disabled {
+.field-head-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
-.card-adv-btn .card-adv-sub {
-  font-family: var(--mono);
-  font-size: 10px;
+.field-name-sub {
   color: var(--text-faint);
 }
 
@@ -4787,6 +4814,172 @@ textarea.persona-desc {
   justify-content: flex-end;
   gap: 6px;
 }
+/* 禁用的素材:图变灰变淡、边框虚线,字段照样能改 */
+.pl-sprite.off {
+  border-style: dashed;
+}
+.pl-sprite.off .pl-thumb img {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+.pl-sprite.off .pl-play {
+  opacity: 0.5;
+}
+.pl-badge.off {
+  background: var(--border-strong);
+  color: var(--text);
+}
+
+/* 立绘位置预览(components/SpritePosition.tsx):一块和游戏里一样的舞台 */
+.spp {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.spp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.spp-seg {
+  display: flex;
+  gap: 4px;
+}
+.spp-ref {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.spp-ref .text-input {
+  width: auto;
+  min-width: 120px;
+}
+.spp-stage {
+  position: relative;
+  align-self: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #000;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.spp-stage:active {
+  cursor: grabbing;
+}
+.spp-stage.wide {
+  width: 100%;
+  max-width: 720px;
+  aspect-ratio: 16 / 9;
+}
+.spp-stage.tall {
+  height: min(520px, 70vh);
+  aspect-ratio: 9 / 19.5;
+}
+.spp-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* 和游戏里的 .vn-sprite-stage 一样:立绘样式里的 cqh 以它的高度为准 */
+.spp-sprites {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  container-type: size;
+  pointer-events: none;
+}
+.spp-sprite {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  height: 100%;
+  width: auto;
+  max-width: none;
+  transform: translateX(-50%);
+  object-fit: contain;
+  object-position: bottom center;
+}
+.spp-sprite.ghost {
+  opacity: 0.45;
+}
+.spp-guide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed rgba(255, 130, 130, 0.85);
+}
+.spp-box {
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  bottom: 2%;
+  display: flex;
+  justify-content: center;
+  padding-top: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(10, 12, 24, 0.55);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 11px;
+  pointer-events: none;
+}
+.spp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.spp-chip {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+.spp-chip.on {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.spp-chip.noface {
+  opacity: 0.55;
+}
+.spp-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.spp-head {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.spp-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.spp-slider {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.spp-slider .sp-slider-value {
+  min-width: 64px;
+  text-align: right;
+  white-space: nowrap;
+}
 
 /* 场景包:音乐行左边是试听按钮;背景是横图,抽屉又窄,图放在上面占满一行 */
 .pl-scene {
@@ -5648,6 +5841,18 @@ textarea.persona-desc {
 .vb-chip:hover {
   border-color: var(--accent);
   color: var(--text);
+}
+/* 例句语言:和例句之间隔一道竖线 */
+.vb-lang {
+  display: inline-flex;
+  gap: 4px;
+  padding-right: 8px;
+  margin-right: 2px;
+  border-right: 1px solid var(--border);
+}
+.vb-chip.on {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .vb-params-head {
   padding: 8px 0 0;

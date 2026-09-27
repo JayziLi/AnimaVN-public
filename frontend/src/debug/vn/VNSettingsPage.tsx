@@ -6,6 +6,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
+import type { SceneAsset } from '../lib/api';
 import { ENTER_KEY_MODES, type EnterKeyMode } from '../lib/chatSettings';
 import {
   MAX_WAIT_MAX,
@@ -23,8 +24,16 @@ import {
   SCALE_MAX,
   SCALE_MIN,
   TEXT_SPEEDS,
+  TITLE_STYLES,
   type VNSettings,
 } from './vnSettings';
+import { VN_ACCENTS } from './accent';
+
+const ACCENT_NOTE = {
+  mono: '按钮、名牌、滑块用灰白,不抢立绘和背景的颜色',
+  character: '从这张卡的立绘里取主色,和封面同一个颜色;换角色跟着变',
+  pink: '原来的粉色',
+} as const;
 
 type Tab = 'text' | 'sound' | 'control' | 'display';
 
@@ -46,12 +55,32 @@ interface Props {
   voiceCastName: string | null | undefined;
   /** 去插件页的语音:换声音、试音、调参数 */
   onOpenVoice: () => void;
+  /** 封面音乐:这张卡的场景包里启用的 BGM、包里设的那首(null = 默认);没选角色时为 null */
+  titleMusic: {
+    bgms: SceneAsset[];
+    value: string | null;
+    onChange: (bgmId: string | null) => void;
+  } | null;
 }
 
-function Row({ label, value, children }: { label: string; value?: string; children: ReactNode }) {
+function Row({
+  label,
+  value,
+  beta,
+  children,
+}: {
+  label: string;
+  value?: string;
+  /** 还在试的功能:名字后面挂个 BETA */
+  beta?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div className={`vn-set${value === undefined ? ' wide' : ''}`}>
-      <span className="vn-set-label">{label}</span>
+      <span className="vn-set-label">
+        {label}
+        {beta && <span className="vn-beta">BETA</span>}
+      </span>
       {children}
       {value !== undefined && <span className="vn-set-value">{value}</span>}
     </div>
@@ -99,6 +128,7 @@ export function VNSettingsPage({
   onChangeVoiceConfig,
   voiceCastName,
   onOpenVoice,
+  titleMusic,
 }: Props) {
   const [tab, setTab] = useState<Tab>('text');
   const bgm = useBgm();
@@ -278,6 +308,23 @@ export function VNSettingsPage({
                   />
                 </Row>
               )}
+              <Row label="语音情绪">
+                <div className="vn-set-stack">
+                  <Seg
+                    options={[
+                      { value: false, name: '跟着表情' },
+                      { value: true, name: '不变' },
+                    ]}
+                    value={voiceConfig.fixedEmotion}
+                    onPick={(v) => setVoice('fixedEmotion', v)}
+                  />
+                  <span className="vn-set-note">
+                    {voiceConfig.fixedEmotion
+                      ? '每句都用默认情绪念(声音情绪表里排第一的那行)'
+                      : '这句立绘是什么表情,就用对应的情绪念'}
+                  </span>
+                </div>
+              </Row>
               <Row label="翻页时">
                 <Seg
                   options={[
@@ -341,7 +388,7 @@ export function VNSettingsPage({
           <Row label="模型标签">
             <Seg options={ON_OFF} value={settings.showModel} onPick={(v) => set('showModel', v)} />
           </Row>
-          <Row label="标题画面">
+          <Row label="标题画面" beta>
             <Seg
               options={[
                 { value: true, name: '进来先看' },
@@ -350,6 +397,52 @@ export function VNSettingsPage({
               value={settings.titleScreen}
               onPick={(v) => set('titleScreen', v)}
             />
+          </Row>
+          <Row label="封面样式" beta>
+            <div className="vn-set-stack">
+              <Seg options={TITLE_STYLES} value={settings.titleStyle} onPick={(v) => set('titleStyle', v)} />
+              <span className="vn-set-note">
+                {settings.titleStyle === 'poster'
+                  ? '斜切纸面排版,纸面跟着背景变色;左边的头像点一下换角色'
+                  : '场景轮流淡入的片头,最后回到上次的地方;点「继续」直接接着玩'}
+                {' · 菜单「返回标题」看效果'}
+              </span>
+            </div>
+          </Row>
+          <Row label="封面音乐" beta>
+            <div className="vn-set-stack">
+              {titleMusic && titleMusic.bgms.length > 0 ? (
+                <>
+                  <select
+                    className="vn-set-select"
+                    aria-label="封面音乐"
+                    // 设的那首删了或禁用了,下拉显示回默认(游戏里也是放排第一的)
+                    value={titleMusic.bgms.some((b) => b.id === titleMusic.value) ? (titleMusic.value ?? '') : ''}
+                    onChange={(e) => titleMusic.onChange(e.target.value || null)}
+                  >
+                    <option value="">默认:排第一的({titleMusic.bgms[0].label})</option>
+                    {titleMusic.bgms.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="vn-set-note">
+                    标题画面放这首,点「继续」换回场景的音乐 · 记在这张卡的场景包上,绑同一个包的角色共用
+                  </span>
+                </>
+              ) : (
+                <span className="vn-set-note">
+                  {titleMusic ? '这张卡的场景包里还没有 BGM,封面不放音乐' : '先选一个角色'}
+                </span>
+              )}
+            </div>
+          </Row>
+          <Row label="主题色">
+            <div className="vn-set-stack">
+              <Seg options={VN_ACCENTS} value={settings.accent} onPick={(v) => set('accent', v)} />
+              <span className="vn-set-note">{ACCENT_NOTE[settings.accent]}</span>
+            </div>
           </Row>
           <Row label="界面样式">
             <Seg

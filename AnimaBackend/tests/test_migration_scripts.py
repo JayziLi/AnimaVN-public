@@ -94,6 +94,10 @@ def test_chat_parent_migration_adds_nullable_links_without_changing_chat(tmp_pat
         "migrate_chat_parent_columns.py",
         "migrate_voice_indextts_columns.py",
         "migrate_voice_params_column.py",
+        "migrate_asset_enabled_columns.py",
+        "migrate_sprite_face_column.py",
+        "migrate_connection_thinking_column.py",
+        "migrate_scene_pack_title_bgm_column.py",
     ],
 )
 def test_migration_scripts_are_noops_against_current_schema(tmp_path: Path, script: str):
@@ -152,4 +156,88 @@ def test_voice_params_migration_adds_an_empty_params_column(tmp_path: Path):
 def test_voice_params_migration_skips_missing_tables(tmp_path: Path):
     database(tmp_path)
     result = run_script(tmp_path, "migrate_voice_params_column.py")
+    assert result.returncode == 0, result.stderr
+
+
+def test_asset_enabled_migration_keeps_existing_sprites_and_assets_on(tmp_path: Path):
+    db_path = database(tmp_path)
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE card_sprites (id TEXT PRIMARY KEY, label TEXT NOT NULL)")
+        db.execute("CREATE TABLE scene_assets (id TEXT PRIMARY KEY, label TEXT NOT NULL)")
+        db.execute("INSERT INTO card_sprites (id, label) VALUES ('s1', '平静')")
+        db.execute("INSERT INTO scene_assets (id, label) VALUES ('a1', '食堂')")
+        db.commit()
+
+    run_twice(tmp_path, "migrate_asset_enabled_columns.py")
+
+    assert columns(db_path, "card_sprites") == ["id", "label", "enabled"]
+    assert columns(db_path, "scene_assets") == ["id", "label", "enabled"]
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("SELECT id, enabled FROM card_sprites").fetchall() == [("s1", 1)]
+        assert db.execute("SELECT id, enabled FROM scene_assets").fetchall() == [("a1", 1)]
+
+
+def test_asset_enabled_migration_skips_missing_tables(tmp_path: Path):
+    database(tmp_path)
+    result = run_script(tmp_path, "migrate_asset_enabled_columns.py")
+    assert result.returncode == 0, result.stderr
+
+
+def test_sprite_face_migration_adds_an_unscanned_column(tmp_path: Path):
+    db_path = database(tmp_path)
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE card_sprites (id TEXT PRIMARY KEY, label TEXT NOT NULL)")
+        db.execute("INSERT INTO card_sprites (id, label) VALUES ('s1', '平静')")
+        db.commit()
+
+    run_twice(tmp_path, "migrate_sprite_face_column.py")
+
+    assert columns(db_path, "card_sprites") == ["id", "label", "face_scan"]
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("SELECT id, face_scan FROM card_sprites").fetchall() == [("s1", None)]
+
+
+def test_sprite_face_migration_skips_missing_tables(tmp_path: Path):
+    database(tmp_path)
+    result = run_script(tmp_path, "migrate_sprite_face_column.py")
+    assert result.returncode == 0, result.stderr
+
+
+def test_connection_thinking_migration_leaves_existing_connections_on_service_default(tmp_path: Path):
+    db_path = database(tmp_path)
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE api_connections (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
+        db.execute("INSERT INTO api_connections (id, name) VALUES ('a1', 'deepseek')")
+        db.commit()
+
+    run_twice(tmp_path, "migrate_connection_thinking_column.py")
+
+    assert columns(db_path, "api_connections") == ["id", "name", "thinking"]
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("SELECT id, thinking FROM api_connections").fetchall() == [("a1", None)]
+
+
+def test_connection_thinking_migration_skips_missing_tables(tmp_path: Path):
+    database(tmp_path)
+    result = run_script(tmp_path, "migrate_connection_thinking_column.py")
+    assert result.returncode == 0, result.stderr
+
+
+def test_scene_pack_title_bgm_migration_leaves_existing_packs_on_the_default(tmp_path: Path):
+    db_path = database(tmp_path)
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE scene_packs (id TEXT PRIMARY KEY, name TEXT NOT NULL)")
+        db.execute("INSERT INTO scene_packs (id, name) VALUES ('p1', '罗德岛')")
+        db.commit()
+
+    run_twice(tmp_path, "migrate_scene_pack_title_bgm_column.py")
+
+    assert columns(db_path, "scene_packs") == ["id", "name", "title_bgm_id"]
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("SELECT id, title_bgm_id FROM scene_packs").fetchall() == [("p1", None)]
+
+
+def test_scene_pack_title_bgm_migration_skips_missing_tables(tmp_path: Path):
+    database(tmp_path)
+    result = run_script(tmp_path, "migrate_scene_pack_title_bgm_column.py")
     assert result.returncode == 0, result.stderr

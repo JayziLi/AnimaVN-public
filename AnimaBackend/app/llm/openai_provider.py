@@ -7,6 +7,7 @@ from openai import AsyncOpenAI
 from app.llm.base import ChatMessage, LLMProvider, StreamChunk
 from app.llm.errors import LLMError
 from app.llm.http_client import make_http_client
+from app.llm.thinking import openai_params
 
 # no standard exists for streamed chain-of-thought: DeepSeek uses
 # reasoning_content, OpenRouter uses reasoning, and relays copy whichever they
@@ -30,8 +31,10 @@ class OpenAICompatibleProvider(LLMProvider):
     relay/proxy services, OpenRouter, DeepSeek, Ollama, LM Studio, vLLM, ...
     """
 
-    def __init__(self, api_key: str | None, base_url: str | None = None):
+    def __init__(self, api_key: str | None, base_url: str | None = None, thinking: str | None = None):
         self._base_url = base_url
+        # 连接上的思考深浅,每次请求都带上(见 app/llm/thinking.py)
+        self._extra = openai_params(thinking)
         # local services (Ollama, LM Studio) need no key, but the SDK requires one
         self._client = AsyncOpenAI(
             api_key=api_key or "sk-no-key", base_url=base_url, http_client=make_http_client()
@@ -62,6 +65,7 @@ class OpenAICompatibleProvider(LLMProvider):
             response = await self._client.chat.completions.create(
                 model=model,
                 messages=[{"role": m.role, "content": m.content} for m in messages],
+                **self._extra,
             )
         except Exception as e:
             raise self._map_error(e) from e
@@ -79,6 +83,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 model=model,
                 messages=[{"role": m.role, "content": m.content} for m in messages],
                 stream=True,
+                **self._extra,
             )
         except Exception as e:
             raise self._map_error(e) from e

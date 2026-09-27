@@ -3,6 +3,7 @@ import './debug.css';
 import { CardEditorDrawer } from './components/CardEditorDrawer';
 import { AnimaIcon } from './components/AnimaIcon';
 import { ChatHistoryOverlay, type ChatOp } from './components/ChatHistoryOverlay';
+import { CardBindings } from './components/CardBindings';
 import { CardPanel, type CardView, type SaveState } from './components/CardPanel';
 import { ChatPanel } from './components/ChatPanel';
 import { ConnectionsDrawer } from './components/ConnectionsDrawer';
@@ -87,8 +88,9 @@ import {
   sceneTagKind,
 } from './plugins/scene';
 import { useScenePlugin } from './plugins/useScenePlugin';
+import { useSpriteLayout } from './plugins/useSpriteLayout';
 import { useVoicePlugin } from './plugins/useVoicePlugin';
-import { isPluginBlock, syncPluginBlocks } from './plugins/common';
+import { enabledOnly, isPluginBlock, syncPluginBlocks } from './plugins/common';
 import {
   DEFAULT_LANG_CONFIG,
   LANG_BLOCK_ID,
@@ -110,10 +112,19 @@ import {
 import {
   EMPTY_BINDINGS,
   PERSONA_BINDING_KEY,
+  bindCard,
   normalizeBindings,
   personaForCard,
   type PersonaBindings,
 } from './lib/personaBinding';
+import {
+  EMPTY_PRESET_BINDINGS,
+  PRESET_BINDING_KEY,
+  forgetPreset,
+  normalizePresetBindings,
+  presetForCard,
+  type PresetBindings,
+} from './lib/presetBinding';
 import { bgmPlayer } from './vn/bgm';
 import { VNSaves } from './vn/VNSaves';
 import { VNScreen } from './vn/VNScreen';
@@ -148,6 +159,9 @@ const EMPTY_RESULT: AssemblyResult = {
   danglingIdentifiers: [],
   budget: EMPTY_BUDGET,
 };
+
+/** 选卡时自动换人设 / 预设要说的一句话;选卡时几句合成一条提示。null = 没换 */
+type Said = { kind: 'ok' | 'error'; text: string } | null;
 
 const PANEL_MIN = 230;
 const PANEL_MAX = 560;
@@ -470,6 +484,9 @@ export default function DebugApp() {
   const scenePlugin = useScenePlugin(cardId, notify);
   /** 语音插件:配置、语音服务、声音,以及当前卡用哪些声音 */
   const voicePlugin = useVoicePlugin(cardId, notify);
+  // 游戏、提示词、语音、存档缩略图只看没禁用的素材;插件抽屉拿完整列表,好重新打开
+  const activeSprites = useMemo(() => enabledOnly(sprites), [sprites]);
+  const activeSceneAssets = useMemo(() => enabledOnly(scenePlugin.assets), [scenePlugin.assets]);
   const sceneKinds = useMemo(
     () => [
       sceneTagKind('bg', scenePlugin.configs.bg.tagTemplate),
@@ -479,13 +496,13 @@ export default function DebugApp() {
   );
   // 整段对话末尾是哪个场景、在放哪首 —— {{current_bg}} / {{current_bgm}}
   const sceneNow = useMemo(
-    () => sceneAtEnd(entries, sceneKinds, scenePlugin.assets),
-    [entries, sceneKinds, scenePlugin.assets],
+    () => sceneAtEnd(entries, sceneKinds, activeSceneAssets),
+    [entries, sceneKinds, activeSceneAssets],
   );
   const sceneMacroValues = useMemo(
     () =>
-      sceneMacros(scenePlugin.configs, scenePlugin.packId !== null, scenePlugin.assets, sceneNow),
-    [scenePlugin.configs, scenePlugin.packId, scenePlugin.assets, sceneNow],
+      sceneMacros(scenePlugin.configs, scenePlugin.packId !== null, activeSceneAssets, sceneNow),
+    [scenePlugin.configs, scenePlugin.packId, activeSceneAssets, sceneNow],
   );
 
   // 插件块的正文只认插件里的提示词模板(全局一份)。预设里存的只是副本,读的时候
@@ -536,10 +553,10 @@ export default function DebugApp() {
   const macroLookup = useMemo(
     () => ({
       ...toLookup(customMacros),
-      ...spriteMacros(spriteConfig, sprites),
+      ...spriteMacros(spriteConfig, activeSprites),
       ...sceneMacroValues,
     }),
-    [customMacros, spriteConfig, sprites, sceneMacroValues],
+    [customMacros, spriteConfig, activeSprites, sceneMacroValues],
   );
 
   /**
@@ -574,28 +591,45 @@ export default function DebugApp() {
   const personaRef = useRef({ bindings: personaBindings, personas });
   personaRef.current = { bindings: personaBindings, personas };
 
-  /** 选中一张卡时套用它的人设;已经是那个就不动 */
+  /**
+   * 选中一张卡时套用它的人设;已经是那个就不动。不直接弹提示,返回要说的话 ——
+   * 选卡时和预设的合成一条。bindings 默认用存着的,卡编辑器里刚改的绑定直接传进来
+   */
   const applyBoundPersona = useCallback(
-    async (forCardId: string) => {
-      const { bindings, personas: list } = personaRef.current;
+    async (forCardId: string, bindings = personaRef.current.bindings): Promise<Said> => {
+      const { personas: list } = personaRef.current;
       const target = personaForCard(
         bindings,
         forCardId,
         list.map((p) => p.id),
       );
       const active = list.find((p) => p.is_active);
-      if (!target || target.id === active?.id) return;
+      if (!target || target.id === active?.id) return null;
       try {
         await debugApi.activatePersona(target.id);
         await refreshPersonas();
         const name = list.find((p) => p.id === target.id)?.name ?? '';
-        notify('ok', `人设换成了「${name}」(${target.bound ? '这张卡绑定的' : '默认人设'})`);
+        return { kind: 'ok', text: `人设换成了「${name}」(${target.bound ? '这张卡绑定的' : '默认人设'})` };
       } catch (e) {
-        notify('error', `人设切换失败: ${e instanceof Error ? e.message : String(e)}`);
+        return { kind: 'error', text: `人设切换失败: ${e instanceof Error ? e.message : String(e)}` };
       }
     },
-    [refreshPersonas, notify],
+    [refreshPersonas],
   );
+
+  /** 预设绑角色卡:选卡、开这张卡的对话时换成绑定的预设,比对话记的优先(见 lib/presetBinding.ts) */
+  const [presetBindings, setPresetBindings] = useState<PresetBindings>(EMPTY_PRESET_BINDINGS);
+  const changePresetBindings = (next: PresetBindings) => {
+    setPresetBindings(next);
+    debugApi
+      .putSetting(PRESET_BINDING_KEY, next)
+      .catch((e: unknown) =>
+        notify('error', `预设绑定保存失败: ${e instanceof Error ? e.message : String(e)}`),
+      );
+  };
+  // selectCard / loadChat 是 useCallback,读最新的绑定、预设列表、当前预设走 ref
+  const presetRef = useRef({ bindings: presetBindings, saved: savedPresets, id: presetId, dirty: presetDirty });
+  presetRef.current = { bindings: presetBindings, saved: savedPresets, id: presetId, dirty: presetDirty };
 
   /** 人设头像:裁完的 blob 转 data URL 存库,和卡头像一个存法 */
   const changePersonaAvatar = async (personaId: string, blob: Blob) => {
@@ -668,6 +702,29 @@ export default function DebugApp() {
       }
     },
     [notify],
+  );
+
+  /**
+   * 这张卡绑了预设就换过去;没绑、绑的删了、已经是它都不动。和人设一样返回要说的话。
+   * 当前预设有没保存的改动时不换 —— 换了改动就丢了
+   */
+  const applyBoundPreset = useCallback(
+    (forCardId: string | null, bindings = presetRef.current.bindings): Said => {
+      const { saved, id, dirty } = presetRef.current;
+      const target = presetForCard(
+        bindings,
+        forCardId,
+        saved.map((p) => p.id),
+      );
+      const row = saved.find((p) => p.id === target);
+      if (!row || row.id === id) return null;
+      if (dirty) {
+        return { kind: 'error', text: `预设有没保存的改动,没换成这张卡绑定的「${row.name}」` };
+      }
+      selectPreset(row);
+      return { kind: 'ok', text: `预设换成了「${row.name}」(这张卡绑定的)` };
+    },
+    [selectPreset],
   );
 
   const refreshPresets = useCallback(
@@ -746,8 +803,13 @@ export default function DebugApp() {
       };
       // 人设是全局的:开旧对话不把当时的名字倒灌回来,只让它跟着当前激活人设走
       setError(null);
-      // 恢复这张对话当时用的预设(还在库里的话)—— 调试台要的是可复现
-      if (detail.preset_id && detail.preset_id !== presetId) {
+      // 卡绑了预设就用绑定的,不管这条对话当时用的哪套(选卡时一般已经换好,这里多半
+      // 什么都不做);没绑才恢复这张对话当时用的预设(还在库里的话)—— 调试台要的是可复现
+      const { bindings, saved } = presetRef.current;
+      if (presetForCard(bindings, detail.card_id, saved.map((p) => p.id))) {
+        const said = applyBoundPreset(detail.card_id);
+        if (said?.kind === 'error') notify('error', said.text);
+      } else if (detail.preset_id && detail.preset_id !== presetRef.current.id) {
         try {
           const row = await debugApi.getPreset(detail.preset_id);
           if (seq !== chatSeq.current) return null; // settle 交给接班的那次
@@ -759,7 +821,7 @@ export default function DebugApp() {
       settle();
       return mapped;
     },
-    [presetId, selectPreset, notify, rememberLastChat],
+    [selectPreset, applyBoundPreset, notify, rememberLastChat],
   );
 
   /** 另开一张新对话,旧的留在下拉里 —— 「清空对话」在持久化之后就是这个语义 */
@@ -830,8 +892,17 @@ export default function DebugApp() {
       setCard(parsed);
       setCardId(row.id);
       setCardSaveState('idle');
-      // 这张卡绑了人设就换过去(没绑换回默认人设),{{user}} 在开场白里一开始就对
-      await applyBoundPersona(row.id);
+      // 这张卡绑了人设就换过去(没绑换回默认人设),{{user}} 在开场白里一开始就对;
+      // 绑了预设也换过去 —— 要在开新对话之前,新对话记的就是它。两句合成一条提示
+      const said = [await applyBoundPersona(row.id), applyBoundPreset(row.id)].filter(
+        (s): s is NonNullable<Said> => s !== null,
+      );
+      if (said.length > 0) {
+        notify(
+          said.some((s) => s.kind === 'error') ? 'error' : 'ok',
+          said.map((s) => s.text).join(';'),
+        );
+      }
       // 从列表点进来的:选完就回编辑器,列表只是选角色的入口
       setCardView('editor');
       setAvatarUrl((prev) => {
@@ -869,7 +940,7 @@ export default function DebugApp() {
         await newChat({ cardId: row.id, card: parsed });
       }
     },
-    [loadChat, newChat, refreshTree, applyBoundPersona],
+    [loadChat, newChat, refreshTree, applyBoundPersona, applyBoundPreset, notify],
   );
 
   /** 「从这里开始」—— 复制 [0, 该消息] 前缀到新分支,然后切过去 */
@@ -1026,6 +1097,14 @@ export default function DebugApp() {
         notify('error', `人设绑定读取失败: ${e instanceof Error ? e.message : String(e)}`),
       );
     debugApi
+      .getSetting(PRESET_BINDING_KEY)
+      .then((v) => {
+        if (v !== null) setPresetBindings(normalizePresetBindings(v));
+      })
+      .catch((e: unknown) =>
+        notify('error', `预设绑定读取失败: ${e instanceof Error ? e.message : String(e)}`),
+      );
+    debugApi
       .getSetting(LANG_SETTING_KEY)
       .then((v) => {
         if (v !== null) setLangConfig(normalizeLangConfig(v));
@@ -1100,6 +1179,8 @@ export default function DebugApp() {
   const changeSprites = (forCard: string, next: CardSprite[]) => {
     if (spriteCardRef.current === forCard) setSprites(next);
   };
+  /** 立绘怎么摆:所有角色共用的构图、当前卡的微调,顺带给没找过脸的立绘补识别 */
+  const spriteLayout = useSpriteLayout(cardId, sprites, changeSprites, notify);
 
   /**
    * 列表视图的头像懒加载:不进列表一张都不拉(data URL 都不小);
@@ -1203,6 +1284,13 @@ export default function DebugApp() {
     setCardBusy(true);
     try {
       const copy = await debugApi.duplicateCard(cardId);
+      // 绑定跟着复制(立绘、语音后端复制时已经带上了)
+      if (personaBindings.cards[cardId]) {
+        changePersonaBindings(bindCard(personaBindings, copy.id, personaBindings.cards[cardId]));
+      }
+      if (presetBindings.cards[cardId]) {
+        changePresetBindings(bindCard(presetBindings, copy.id, presetBindings.cards[cardId]));
+      }
       setSavedCards(await debugApi.listCards());
       await selectCard(copy);
       notify('ok', `已复制为「${copy.name}」`);
@@ -1221,6 +1309,8 @@ export default function DebugApp() {
       // 别让在途的自动保存把刚删的卡又写回去
       window.clearTimeout(cardSaveTimer.current);
       await debugApi.deleteCard(cardId);
+      if (personaBindings.cards[cardId]) changePersonaBindings(bindCard(personaBindings, cardId, null));
+      if (presetBindings.cards[cardId]) changePresetBindings(bindCard(presetBindings, cardId, null));
       // 列表缓存里的头像一起清
       setCardAvatars((prev) => {
         if (!prev.has(cardId)) return prev;
@@ -1442,6 +1532,8 @@ export default function DebugApp() {
     setPresetBusy(true);
     try {
       await debugApi.deletePreset(presetId);
+      const cleaned = forgetPreset(presetBindings, presetId);
+      if (JSON.stringify(cleaned) !== JSON.stringify(presetBindings)) changePresetBindings(cleaned);
       const list = await debugApi.listPresets();
       setSavedPresets(list);
       if (list[0]) {
@@ -1788,7 +1880,11 @@ export default function DebugApp() {
     if (!chatId) return;
     const timer = window.setTimeout(() => {
       const patch: ChatPayload = {};
-      if (metaRef.current.preset_id !== presetId) patch.preset_id = presetId ?? null;
+      // 切卡途中(见下面 card_id 那段):这时的预设是新卡绑定的、用户名是新卡人设的,
+      // 都不属于还挂着的上一张对话,写进去的话再打开那张卡就恢复成别人的预设。
+      // 等 loadChat/newChat 换好对话,chatId 一变这里会重算
+      const switching = metaRef.current.card_id !== null && metaRef.current.card_id !== cardId;
+      if (!switching && metaRef.current.preset_id !== presetId) patch.preset_id = presetId ?? null;
       // card_id 只在「收养孤儿对话」时写。孤儿 = 导入的 ST jsonl 按 character_name
       // 匹配不到卡(card_id 为空),在哪张卡上打开就归谁。
       //
@@ -1798,7 +1894,7 @@ export default function DebugApp() {
       // 改判给新卡 —— 对话从原主人那儿消失,再切回去就打开了别人的历史。
       // 往返超过 600ms(手机网络下很常见)必现,本机偶发。
       if (metaRef.current.card_id === null && cardId) patch.card_id = cardId;
-      if (metaRef.current.user_name !== userName) patch.user_name = userName;
+      if (!switching && metaRef.current.user_name !== userName) patch.user_name = userName;
       if (Object.keys(patch).length === 0) return;
       Object.assign(metaRef.current, patch);
       debugApi.updateChat(chatId, patch).catch((e: unknown) =>
@@ -2230,7 +2326,9 @@ export default function DebugApp() {
         block: blockControls('sprite'),
         sprites,
         onSpritesChange: changeSprites,
+        layout: spriteLayout,
       }}
+      cards={savedCards.map((c) => ({ id: c.id, name: c.name }))}
       scene={scenePlugin}
       sceneBlocks={{ bg: blockControls('bg'), bgm: blockControls('bgm') }}
       sceneMacros={sceneMacroValues}
@@ -2251,6 +2349,49 @@ export default function DebugApp() {
    * 预设面板:调试台左栏一份,视觉小说「调试」面板里一份,状态和操作是同一套,
    * 只有收起 / 点插件块这几处按所在位置不同
    */
+  // ---- 角色卡的绑定:卡编辑器里的「绑定」一栏、预设面板的快捷勾选 ----
+
+  const cardName = card?.name || '(无名)';
+  const boundPresetId = presetForCard(
+    presetBindings,
+    cardId,
+    savedPresets.map((p) => p.id),
+  );
+  const boundPersonaId = cardId ? (personaBindings.cards[cardId] ?? null) : null;
+
+  /** 改这张卡绑的人设:存下来,当场换过去(解绑 = 换回默认人设,和选卡时一样) */
+  const bindPersonaToCard = async (id: string | null) => {
+    if (!cardId) return;
+    const next = bindCard(personaBindings, cardId, id);
+    changePersonaBindings(next);
+    const name = personas.find((p) => p.id === id)?.name;
+    const said = await applyBoundPersona(cardId, next);
+    const head = name ? `「${cardName}」绑定了人设「${name}」` : `「${cardName}」不再绑定人设`;
+    notify(said?.kind ?? 'ok', said ? `${head};${said.text}` : head);
+  };
+
+  /** 改这张卡绑的预设:存下来,绑上就当场换过去(有没保存的改动时先问);解绑不动当前预设 */
+  const bindPresetToCard = (id: string | null) => {
+    if (!cardId) return;
+    changePresetBindings(bindCard(presetBindings, cardId, id));
+    const name = savedPresets.find((p) => p.id === id)?.name;
+    notify('ok', name ? `「${cardName}」绑定了预设「${name}」` : `「${cardName}」不再绑定预设`);
+    if (id && id !== presetId) choosePreset(id);
+  };
+
+  const cardBindings = cardId ? (
+    <CardBindings
+      personas={personas}
+      personaId={personas.some((p) => p.id === boundPersonaId) ? boundPersonaId : null}
+      defaultPersonaName={personas.find((p) => p.id === personaBindings.default)?.name ?? null}
+      presets={savedPresets}
+      presetId={boundPresetId}
+      busy={cardBusy}
+      onPersona={(id) => void bindPersonaToCard(id)}
+      onPreset={bindPresetToCard}
+    />
+  ) : null;
+
   const renderPresetPanel = (at: {
     collapsed: boolean;
     onToggleCollapse: () => void;
@@ -2290,6 +2431,16 @@ export default function DebugApp() {
       onDelete={deletePreset}
       onImport={() => presetInputRef.current?.click()}
       onExport={exportPreset}
+      cardBinding={
+        cardId && presetId
+          ? {
+              cardName,
+              boundName: savedPresets.find((p) => p.id === boundPresetId)?.name ?? null,
+              bound: boundPresetId === presetId,
+              onToggle: (on) => bindPresetToCard(on ? presetId : null),
+            }
+          : undefined
+      }
     />
   );
 
@@ -2687,6 +2838,7 @@ export default function DebugApp() {
           onExport={() => void exportCard()}
           onOpenAdvanced={() => setShowAdvanced(true)}
           onPickAvatar={() => avatarInputRef.current?.click()}
+          bindings={cardBindings}
         />
       </div>
 
@@ -2751,9 +2903,13 @@ export default function DebugApp() {
           macros={displayMacros}
           charName={card?.name ?? ''}
           userName={userName}
-          sprites={sprites}
+          sprites={activeSprites}
+          spriteStage={spriteLayout.stage}
+          spriteLayout={spriteLayout.layout}
           tagTemplate={spriteConfig.tagTemplate}
-          sceneAssets={scenePlugin.assets}
+          sceneAssets={activeSceneAssets}
+          titleBgmId={scenePlugin.titleBgmId}
+          onChangeTitleBgm={(id) => void scenePlugin.setTitleBgm(id)}
           bgTemplate={scenePlugin.configs.bg.tagTemplate}
           bgmTemplate={scenePlugin.configs.bgm.tagTemplate}
           voiceConfig={voicePlugin.config}
@@ -2772,6 +2928,8 @@ export default function DebugApp() {
             const c = chats.find((x) => x.id === chatId);
             return c ? chatLabel(c) : '';
           })()}
+          chatUpdatedAt={chats.find((x) => x.id === chatId)?.updated_at ?? null}
+          cardTag={card?.tags?.find((t) => t.trim())?.trim() ?? null}
           loading={chatLoading}
           modelLabel={activeModel}
           onSend={(text) => void send(text)}
@@ -2841,8 +2999,10 @@ export default function DebugApp() {
                   chats={chats}
                   currentChatId={chatId}
                   currentEntries={entries}
-                  sceneAssets={scenePlugin.assets}
-                  sprites={sprites}
+                  sceneAssets={activeSceneAssets}
+                  sprites={activeSprites}
+                  spriteStage={spriteLayout.stage}
+                  spriteLayout={spriteLayout.layout}
                   tagKinds={vnKinds}
                   charName={card?.name ?? ''}
                   macros={displayMacros}
@@ -2889,6 +3049,7 @@ export default function DebugApp() {
                     onExport={() => void exportCard()}
                     onOpenAdvanced={() => setShowAdvanced(true)}
                     onPickAvatar={() => avatarInputRef.current?.click()}
+                    bindings={cardBindings}
                   />
                 </div>
               );

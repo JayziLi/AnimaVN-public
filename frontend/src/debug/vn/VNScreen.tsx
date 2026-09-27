@@ -16,6 +16,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from 'react';
@@ -26,6 +27,7 @@ import {
   type CardSprite,
   type SceneAsset,
   type SpeakRequest,
+  type SpriteLayout,
 } from '../lib/api';
 import { currentInfo, currentText, type ChatEntry } from '../lib/chatEntry';
 import { enterHint, enterShouldSend, type EnterKeyMode } from '../lib/chatSettings';
@@ -34,7 +36,15 @@ import { useCoarsePointer, useIsMobile } from '../lib/useIsMobile';
 import { resolveByLabel } from '../plugins/common';
 import { emotionCandidates, isNpcHit, type EmotionContext, type TagMatch } from '../plugins/emotionMatch';
 import { parseBilingual } from '../plugins/lang';
-import { applySceneTag, backgroundsOf, bgmsOf, initialScene, type SceneState } from '../plugins/scene';
+import { facesByCanvas, spriteStyle, type SpriteStage } from '../plugins/spriteLayout';
+import {
+  applySceneTag,
+  backgroundsOf,
+  bgmsOf,
+  initialScene,
+  titleBgmOf,
+  type SceneState,
+} from '../plugins/scene';
 import {
   EMO_MODE_TEXT,
   planVoiceLines,
@@ -58,7 +68,8 @@ import { VoiceDetail } from './VoiceDetail';
 import type { PluginFocus, PluginSection } from '../components/PluginsDrawer';
 import { VNMenu, type MenuPage } from './VNMenu';
 import { VNSettingsPage } from './VNSettingsPage';
-import { VNTitle, type TitleCard } from './VNTitle';
+import { useVNAccent } from './accent';
+import { VNTitle, type TitleCard, type TitleScene } from './VNTitle';
 import { loadVNSettings, saveVNSettings, type VNSettings } from './vnSettings';
 
 /** 卡没绑场景包、或者包里的背景还没传图时用的默认背景 */
@@ -93,9 +104,16 @@ interface Props {
   charName: string;
   userName: string;
   sprites: CardSprite[];
+  /** 立绘怎么摆:所有角色共用的构图 + 这张卡的微调 */
+  spriteStage: SpriteStage;
+  spriteLayout: SpriteLayout;
   tagTemplate: string;
   /** 这张卡绑的场景包里的素材(背景 + BGM);没绑时为空 */
   sceneAssets: SceneAsset[];
+  /** 场景包设的封面音乐;null = 放排第一的 */
+  titleBgmId: string | null;
+  /** 设置页里改封面音乐:存在场景包上 */
+  onChangeTitleBgm: (bgmId: string | null) => void;
   bgTemplate: string;
   bgmTemplate: string;
   /** 语音插件的配置,以及这张卡用哪些声音 */
@@ -115,6 +133,10 @@ interface Props {
   /** 当前对话。换了(读档、新故事)就从最新一条回复的第一句开始看 */
   chatKey: string | null;
   chatName: string;
+  /** 当前对话最后一次改动的时间 —— 标题画面上的「上次 · 3 小时前」 */
+  chatUpdatedAt: string | null;
+  /** 作品名(卡片的第一个标签),标题画面用 */
+  cardTag: string | null;
   /** 正在读对话 —— 盖一层加载画面 */
   loading: boolean;
   /** 右上角的模型标签 */
@@ -134,7 +156,7 @@ interface Props {
   onRegenerate: () => void;
   onExit: () => void;
   renderPage: (page: HostPage, ctx: PageContext) => ReactNode;
-  /** 标题画面「新的故事」里的角色 */
+  /** 标题画面上的角色头像 */
   cards: TitleCard[];
   currentCardId: string | null;
   onPickCard: (id: string, fresh: boolean) => void;
@@ -166,6 +188,8 @@ interface SpriteView {
   src: string | null;
   /** 没有图时占位长方形上写的字 */
   label: string;
+  /** 按脸对齐算出来的位置(plugins/spriteLayout.ts);占位长方形没有 */
+  style?: CSSProperties;
 }
 
 const reduceMotion =
@@ -243,6 +267,8 @@ function SpriteLayer({ view, charName }: { view: SpriteView; charName: string })
 
   useEffect(() => {
     if (view.key !== layers.cur.key) setLayers({ cur: view, prev: layers.cur });
+    // 同一张图只是挪了位置(插件页里在调):原地更新,不走淡入淡出
+    else if (view !== layers.cur) setLayers((l) => ({ ...l, cur: view }));
   }, [view, layers.cur]);
 
   // 淡出结束后把旧图摘掉。单独一个 effect:和上面写在一起的话,setLayers 引起的
@@ -255,7 +281,14 @@ function SpriteLayer({ view, charName }: { view: SpriteView; charName: string })
 
   const render = (v: SpriteView, cls: string) =>
     v.src ? (
-      <img key={v.key} className={`vn-sprite ${cls}`} src={v.src} alt={`${charName} · ${v.label}`} draggable={false} />
+      <img
+        key={v.key}
+        className={`vn-sprite ${cls}`}
+        src={v.src}
+        alt={`${charName} · ${v.label}`}
+        draggable={false}
+        style={v.style}
+      />
     ) : (
       <div key={v.key} className={`vn-sprite vn-sprite-ph ${cls}`}>
         <span className="vn-sprite-ph-name">{charName || '角色'}</span>
@@ -333,8 +366,12 @@ export function VNScreen({
   charName,
   userName,
   sprites,
+  spriteStage,
+  spriteLayout,
   tagTemplate,
   sceneAssets,
+  titleBgmId,
+  onChangeTitleBgm,
   bgTemplate,
   bgmTemplate,
   voiceConfig,
@@ -348,6 +385,8 @@ export function VNScreen({
   notReadyHint,
   chatKey,
   chatName,
+  chatUpdatedAt,
+  cardTag,
   loading,
   modelLabel,
   onSend,
@@ -515,16 +554,22 @@ export function VNScreen({
     [resolveTag, sprites.length, charName],
   );
 
+  const faces = useMemo(() => facesByCanvas(sprites), [sprites]);
   const spriteView: SpriteView = useMemo(() => {
     // 对不上、还在问模型的标签不切图,保持上一张 —— 控制台里会写原因
     const label = spriteLabelAfter(hitsSoFar, emotionCtx, sprites[0]?.label ?? null);
     const matched = sprites.find((s) => s.label === label) ?? sprites[0] ?? null;
     if (matched) {
-      return { key: matched.id + (matched.has_image ? `:${matched.image_version}` : ''), src: spriteImageUrl(matched), label: matched.label };
+      return {
+        key: matched.id + (matched.has_image ? `:${matched.image_version}` : ''),
+        src: spriteImageUrl(matched),
+        label: matched.label,
+        style: spriteStyle(faces.get(matched.id) ?? null, spriteLayout, spriteStage),
+      };
     }
     // 这张卡一张立绘都没配:占位长方形上写匹配到的内置表情(模型不可用时是 AI 的原词)
     return { key: `ph:${label ?? ''}`, src: null, label: label ?? '未配置立绘' };
-  }, [hitsSoFar, sprites, emotionCtx]);
+  }, [hitsSoFar, sprites, emotionCtx, faces, spriteLayout, spriteStage]);
 
   const scene: SceneState = useMemo(() => {
     let state = initialScene(sceneAssets);
@@ -538,9 +583,35 @@ export function VNScreen({
       ? { key: `${scene.bg.id}:${scene.bg.file_version}`, src: bgUrl, focus: scene.bg.focus_x }
       : { key: 'fallback', src: FALLBACK_BACKGROUND, focus: 50 };
 
+  // ---- 标题画面:最后一句、上次停下的地方、场景包里的背景 ----
+
+  // 最新一条回复里她说的最后一句;她没开口就用别人说的最后一句
+  const lastLine = useMemo(() => {
+    const said = (lastAssistantIndex >= 0 ? beats[lastAssistantIndex].parsed?.lines : null) ?? [];
+    const pick = (ok: (l: VNLine) => boolean) => {
+      for (let i = said.length - 1; i >= 0; i--) if (!said[i].player && said[i].text.trim() && ok(said[i])) return said[i];
+      return null;
+    };
+    const l = pick((x) => x.speaker === charName) ?? pick((x) => Boolean(x.speaker));
+    return l ? unquote(l.text.trim()) : null;
+  }, [beats, lastAssistantIndex, charName]);
+  const titleHome: TitleScene = { key: bgView.key, src: bgView.src, focus: bgView.focus, label: scene.bg?.label ?? '' };
+  const titleScenes: TitleScene[] = useMemo(
+    () =>
+      backgroundsOf(sceneAssets).flatMap((a) => {
+        const src = sceneFileUrl(a);
+        return src ? [{ key: `${a.id}:${a.file_version}`, src, focus: a.focus_x, label: a.label }] : [];
+      }),
+    [sceneAssets],
+  );
+
   // ---- 音乐 ----
 
-  const bgmUrl = scene.bgm ? sceneFileUrl(scene.bgm) : null;
+  // 标题画面开着时放封面音乐(场景包里设的那首,没设就是排第一的),「继续」后换回场景的
+  const [title, setTitle] = useState(settings.titleScreen);
+  const titleBgm = useMemo(() => titleBgmOf(sceneAssets, titleBgmId), [sceneAssets, titleBgmId]);
+  const playing = title ? titleBgm : scene.bgm;
+  const bgmUrl = playing ? sceneFileUrl(playing) : null;
   useEffect(() => {
     bgmPlayer.setActive(true);
     return () => bgmPlayer.setActive(false);
@@ -578,7 +649,6 @@ export function VNScreen({
 
   // ---- 界面状态 ----
 
-  const [title, setTitle] = useState(settings.titleScreen);
   const [menu, setMenu] = useState<MenuPage | null>(null);
   // 菜单上次停在哪一页,Esc 再打开时回到那儿
   const [lastPage, setLastPage] = useState<MenuPage>('log');
@@ -594,6 +664,7 @@ export function VNScreen({
   const [ctrlHeld, setCtrlHeld] = useState(false);
   const skipping = skip || ctrlHeld;
   const veil = useLoadingVeil(loading);
+  const accent = useVNAccent(settings.accent, sprites);
 
   // ---- 语音:说话人对得上声音的台词才念,情绪跟着这句生效的立绘表情 ----
 
@@ -614,8 +685,9 @@ export function VNScreen({
         ctx: emotionCtx,
         cast: voiceCast,
         streaming,
+        fixedEmotion: voiceConfig.fixedEmotion,
       }),
-    [beatParsed, emotionBefore, emotionCtx, voiceCast, streaming],
+    [beatParsed, emotionBefore, emotionCtx, voiceCast, streaming, voiceConfig.fixedEmotion],
   );
   const voice = useVoiceLine({
     config: voiceConfig,
@@ -671,13 +743,14 @@ export function VNScreen({
             ctx: emotionCtx,
             cast: voiceCast,
             streaming,
+            fixedEmotion: voiceConfig.fixedEmotion,
           })
         : [];
       out.set(b.entry.id, { lines: p.lines, plans, hits: p.hits, before: label, streaming });
       label = spriteLabelAfter(p.hits, emotionCtx, label);
     }
     return out;
-  }, [logOpen, beats, sprites, emotionCtx, voiceCast, voiceConfig.enabled]);
+  }, [logOpen, beats, sprites, emotionCtx, voiceCast, voiceConfig.enabled, voiceConfig.fixedEmotion]);
 
   const lineView = (entry: ChatEntry): ReactNode | null => {
     const b = backlog.get(entry.id);
@@ -736,6 +809,7 @@ export function VNScreen({
                   profile={ln.player ? null : voiceForSpeaker(ln.speaker, charName, voiceCast)}
                   ctx={emotionCtx}
                   voiceEnabled={voiceConfig.enabled}
+                  fixedEmotion={voiceConfig.fixedEmotion}
                   streamingLast={b.streaming && i === b.lines.length - 1}
                   onJump={() => jumpTo(entry.id, i)}
                 />
@@ -1036,6 +1110,9 @@ export function VNScreen({
         {
           '--vn-box-alpha': settings.boxOpacity,
           '--vn-text-scale': settings.textScale,
+          '--vn-accent': accent.accent,
+          '--vn-accent-ink': accent.ink,
+          '--vn-accent-rgb': accent.rgb,
         } as React.CSSProperties
       }
       // 浏览器要用户点过才让网页出声;界面里任何一次点击都顺手解锁一下
@@ -1228,6 +1305,11 @@ export function VNScreen({
                 currentCardId ? (voiceCast.main?.name ?? voiceCast.extras[0]?.name ?? null) : undefined
               }
               onOpenVoice={() => openPlugin('voice')}
+              titleMusic={
+                currentCardId
+                  ? { bgms: bgmsOf(sceneAssets), value: titleBgmId, onChange: onChangeTitleBgm }
+                  : null
+              }
             />
           ) : menu === 'dev' ? (
             <div className="vn-dev">
@@ -1249,6 +1331,7 @@ export function VNScreen({
                 scene={scene}
                 voice={{
                   enabled: voiceConfig.enabled,
+                  fixedEmotion: voiceConfig.fixedEmotion,
                   cast: voiceCast,
                   plans: voicePlans,
                   clips: voice.clips,
@@ -1267,17 +1350,26 @@ export function VNScreen({
 
       {title && (
         <VNTitle
-          bgSrc={bgView.src}
+          variant={settings.titleStyle}
+          cardId={currentCardId}
           charName={charName}
-          chatName={chatName}
-          hasCard={Boolean(currentCardId)}
+          tag={cardTag}
+          lastPlayed={chatUpdatedAt}
+          lastLine={lastLine}
+          sprites={sprites}
+          faces={faces}
+          spriteStage={spriteStage}
+          spriteLayout={spriteLayout}
+          home={titleHome}
+          scenes={titleScenes}
           cards={cards}
-          currentCardId={currentCardId}
           onContinue={() => setTitle(false)}
-          onPickCard={(id, fresh) => {
+          onNewStory={() => {
+            if (!currentCardId) return;
             setTitle(false);
-            onPickCard(id, fresh);
+            onPickCard(currentCardId, true);
           }}
+          onSwitchCard={(id) => onPickCard(id, false)}
           onLoad={() => {
             setTitle(false);
             openMenu('save');
@@ -1290,7 +1382,8 @@ export function VNScreen({
         />
       )}
 
-      {veil && (
+      {/* 标题画面开着时不盖黑场:在封面上点头像换人,由封面自己的转场遮 */}
+      {veil && !title && (
         <div className="vn-loading" aria-live="polite">
           <span className="vn-loading-hint">正在准备 · 背景 · 立绘 · 对话</span>
           <span className="vn-loading-mark">
@@ -1354,6 +1447,8 @@ function ConsoleView({
   scene: SceneState;
   voice: {
     enabled: boolean;
+    /** 情绪不变:不等模型认表情 */
+    fixedEmotion: boolean;
     cast: VoiceCast;
     plans: readonly (SpeakRequest | null)[];
     clips: ReadonlyMap<string, ClipState>;
@@ -1484,7 +1579,7 @@ function ConsoleView({
                 ? '这张卡没绑声音(调试台 → 插件 → 语音)'
                 : voice.paused
                   ? `连续失败,暂停中(每 15 秒自动重连):${voice.lastError ?? ''}`
-                  : `主声音「${voice.cast.main?.name ?? '无'}」`}
+                  : `主声音「${voice.cast.main?.name ?? '无'}」${voice.fixedEmotion ? ' · 情绪不变' : ''}`}
           </span>
         </div>
         {lines.length > 0 && (
@@ -1506,9 +1601,11 @@ function ConsoleView({
                   const st = plan ? voice.clips.get(voiceKey(plan)) : undefined;
                   const why = voiceSkipReason(ln, profile, {
                     streamingLast: voice.streaming && i === lines.length - 1,
-                    pendingTag: spriteHitsUpTo(hits, i, voice.charName).some(
-                      (h) => emotion.resolve(h.label).state === 'pending',
-                    ),
+                    pendingTag:
+                      !voice.fixedEmotion &&
+                      spriteHitsUpTo(hits, i, voice.charName).some(
+                        (h) => emotion.resolve(h.label).state === 'pending',
+                      ),
                   });
                   const actual =
                     st?.state === 'ready' && st.emotion !== (plan?.emotion ?? '') ? ` → ${st.emotion}` : '';

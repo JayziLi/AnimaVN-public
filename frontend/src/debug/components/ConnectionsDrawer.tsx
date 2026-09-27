@@ -3,6 +3,7 @@ import {
   debugApi,
   type ApiType,
   type DebugConnection,
+  type ThinkingLevel,
 } from '../lib/api';
 
 /** 与游戏版 ConnectionsPanel 同一份逻辑(增删改/选中即激活/两步删除/
@@ -32,7 +33,17 @@ interface FormState {
   api_key: string;
   model: string;
   stream: boolean;
+  thinking: ThinkingLevel | null;
 }
+
+/** 思考的几档。关和深浅三档 DeepSeek、Kimi、GLM 用的是同一套名字(2026-09-26 实测) */
+const THINKING_OPTIONS: { value: ThinkingLevel | ''; name: string }[] = [
+  { value: '', name: '默认(不传,跟服务走)' },
+  { value: 'off', name: '关 —— 不思考,直接写正文' },
+  { value: 'low', name: '低 —— 想得短' },
+  { value: 'high', name: '高' },
+  { value: 'max', name: '最大 —— 想得最多,也最慢' },
+];
 
 type Busy = 'save' | 'delete' | 'refresh' | 'ping' | 'test' | null;
 
@@ -44,6 +55,7 @@ function formFrom(conn: DebugConnection | null): FormState {
     api_key: '',
     model: conn?.model ?? '',
     stream: conn?.stream ?? true,
+    thinking: conn?.thinking ?? null,
   };
 }
 
@@ -137,6 +149,7 @@ export function ConnectionsDrawer({ connections: shared, notify, onClose, onChan
         if (form.base_url !== (selected.base_url ?? '')) patch.base_url = form.base_url;
         if (form.model !== selected.model) patch.model = form.model;
         if (form.stream !== selected.stream) patch.stream = form.stream;
+        if (form.thinking !== selected.thinking) patch.thinking = form.thinking;
         if (form.api_key.trim()) patch.api_key = form.api_key.trim();
         if (Object.keys(patch).length > 0) {
           await debugApi.updateConnection(selectedId, patch);
@@ -149,6 +162,7 @@ export function ConnectionsDrawer({ connections: shared, notify, onClose, onChan
           api_key: form.api_key.trim() || null,
           model: form.model,
           stream: form.stream,
+          thinking: form.thinking,
         });
         savedId = created.id;
         await debugApi.activateConnection(created.id);
@@ -388,6 +402,29 @@ export function ConnectionsDrawer({ connections: shared, notify, onClose, onChan
                 </span>
               </span>
             </label>
+
+            {/* 和流式一样跟着连接走:认不认、认哪几档是服务和模型的事 */}
+            {form.api_type !== 'mock' && (
+              <label className="conn-field span-2">
+                <span className="conn-label">思考 · THINKING</span>
+                <select
+                  className="select"
+                  value={form.thinking ?? ''}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, thinking: (e.target.value || null) as ThinkingLevel | null }))
+                  }
+                >
+                  {THINKING_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="conn-switch-hint">
+                  想得越少，正文出得越快，剧情和格式可能粗糙一点。DeepSeek、Kimi 都认；GLM-5.3 关不掉思考，只能选低 / 高 / 最大；中转站多半不认，报错就改回默认。
+                </span>
+              </label>
+            )}
 
             {cachedModels.length > 0 && (
               <label className="conn-field span-2">

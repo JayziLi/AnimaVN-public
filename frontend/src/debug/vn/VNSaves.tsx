@@ -5,7 +5,7 @@
  * 算缩略图要读整段对话:当前这个直接用内存里的,别的按需拉一次,按「id + 更新时间」缓存。
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   debugApi,
   sceneFileUrl,
@@ -13,6 +13,7 @@ import {
   type CardSprite,
   type ChatSummary,
   type SceneAsset,
+  type SpriteLayout,
 } from '../lib/api';
 import { currentText, fromStored, type ChatEntry } from '../lib/chatEntry';
 import { substituteMacros, type MacroContext } from '../lib/macros';
@@ -20,6 +21,7 @@ import { relTime } from '../lib/time';
 import { parseBilingual } from '../plugins/lang';
 import { sceneAtEnd } from '../plugins/scene';
 import { resolveSprite } from '../plugins/sprite';
+import { facesByCanvas, spriteStyle, type SpriteStage } from '../plugins/spriteLayout';
 import { extractTags, type TagKind } from './script';
 
 interface Props {
@@ -30,6 +32,9 @@ interface Props {
   currentEntries: ChatEntry[];
   sceneAssets: SceneAsset[];
   sprites: CardSprite[];
+  /** 立绘和游戏里一样按脸对齐 */
+  spriteStage: SpriteStage;
+  spriteLayout: SpriteLayout;
   tagKinds: TagKind[];
   charName: string;
   macros: MacroContext;
@@ -89,7 +94,15 @@ function previewOf(
   return { bg: scene.bg, sprite, spriteLabel: sprite ? sprite.label : spriteLabel, line };
 }
 
-function Thumb({ preview, charName }: { preview: Preview | null; charName: string }) {
+function Thumb({
+  preview,
+  charName,
+  spriteCss,
+}: {
+  preview: Preview | null;
+  charName: string;
+  spriteCss: (s: CardSprite) => CSSProperties;
+}) {
   if (!preview) return <div className="vn-slot-thumb loading" />;
   const bgUrl = preview.bg ? sceneFileUrl(preview.bg) : null;
   const spriteUrl = preview.sprite ? spriteImageUrl(preview.sprite) : null;
@@ -102,8 +115,16 @@ function Thumb({ preview, charName }: { preview: Preview | null; charName: strin
         draggable={false}
         style={{ objectPosition: `${preview.bg?.focus_x ?? 50}% 50%` }}
       />
-      {spriteUrl ? (
-        <img className="vn-slot-sprite" src={spriteUrl} alt="" draggable={false} />
+      {spriteUrl && preview.sprite ? (
+        <div className="vn-slot-stage">
+          <img
+            className="vn-slot-sprite"
+            src={spriteUrl}
+            alt=""
+            draggable={false}
+            style={spriteCss(preview.sprite)}
+          />
+        </div>
       ) : (
         <div className="vn-slot-sprite ph">
           <span>{charName || '角色'}</span>
@@ -120,6 +141,8 @@ export function VNSaves({
   currentEntries,
   sceneAssets,
   sprites,
+  spriteStage,
+  spriteLayout,
   tagKinds,
   charName,
   macros,
@@ -171,6 +194,10 @@ export function VNSaves({
     return out;
   }, [chats, currentChatId, currentEntries, loaded, tagKinds, sceneAssets, sprites, charName, macros]);
 
+  const faces = useMemo(() => facesByCanvas(sprites), [sprites]);
+  const spriteCss = (s: CardSprite) =>
+    spriteStyle(faces.get(s.id) ?? null, spriteLayout, spriteStage);
+
   const commitRename = () => {
     if (!renaming) return;
     const name = renaming.name.trim();
@@ -213,7 +240,7 @@ export function VNSaves({
                   disabled={busy}
                   title={current ? '正在玩的就是这个' : '读档'}
                 >
-                  <Thumb preview={preview} charName={charName} />
+                  <Thumb preview={preview} charName={charName} spriteCss={spriteCss} />
                   {current && <span className="vn-slot-badge">当前</span>}
                   <span className="vn-slot-body">
                     <span className="vn-slot-title">

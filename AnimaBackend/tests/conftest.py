@@ -168,7 +168,8 @@ def put_debug_message(client: TestClient):
 
 
 class FakeGsv:
-    """假装是 GPT-SoVITS api_v2(只有 AnimaVN 用到的三个接口,外加测试连接用的 /docs)。
+    """假装是 GPT-SoVITS api_v2(只有 AnimaVN 用到的三个接口,外加测试连接用的 /docs、
+    台式机启动脚本额外开的 /anima/ref)。
 
     记下收到的每个请求。把 *_reply 设成 httpx.Response 就原样回它;设成异常就抛出,
     模拟连不上、超时。正常时 /tts 回 b"RIFF" + 文本,方便断言。
@@ -180,6 +181,7 @@ class FakeGsv:
         self.tts_reply: httpx.Response | Exception | None = None
         self.weights_reply: httpx.Response | Exception | None = None
         self.docs_reply: httpx.Response | Exception | None = None
+        self.ref_reply: httpx.Response | Exception | None = None
 
     @staticmethod
     def _reply(override: httpx.Response | Exception | None, default: httpx.Response) -> httpx.Response:
@@ -202,7 +204,13 @@ class FakeGsv:
         if path == "/docs":
             self.calls.append(("docs", None))
             return self._reply(self.docs_reply, httpx.Response(200, text="docs"))
-        return httpx.Response(404)
+        if path == "/anima/ref":
+            ref = request.url.params["path"]
+            self.calls.append(("ref", ref))
+            ok = httpx.Response(200, headers={"content-type": "audio/wav"}, content=b"RIFF" + ref.encode())
+            return self._reply(self.ref_reply, ok)
+        # FastAPI 对没有的路由就是这样回的
+        return httpx.Response(404, json={"detail": "Not Found"})
 
     def names(self) -> list[str]:
         return [name for name, _ in self.calls]
@@ -249,7 +257,10 @@ class FakeIndexTts:
             self.calls.append(("health", None))
             ok = httpx.Response(200, json={"model": "IndexTTS-2.5", "ready": True})
             return FakeGsv._reply(self.health_reply, ok)
-        return httpx.Response(404)
+        if path == "/anima/ref":
+            self.calls.append(("ref", request.url.params["path"]))
+        # 小服务没有 /anima/ref:FastAPI 对没有的路由就是这样回的
+        return httpx.Response(404, json={"detail": "Not Found"})
 
     def bodies(self) -> list[dict]:
         return [body for name, body in self.calls if name == "tts"]

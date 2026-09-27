@@ -24,6 +24,10 @@ export interface ScenePluginState {
   packId: string | null;
   /** 当前卡绑的包里的素材 */
   assets: SceneAsset[];
+  /** 当前包设的封面音乐;null = 放排第一的 */
+  titleBgmId: string | null;
+  /** 改当前包的封面音乐(null = 回到默认) */
+  setTitleBgm: (bgmId: string | null) => Promise<void>;
   /** 改当前卡的绑定(null = 解绑) */
   bindPack: (packId: string | null) => Promise<void>;
   /** 抽屉里改完素材后把新列表交回来;不是当前包的结果丢掉 */
@@ -87,13 +91,14 @@ export function useScenePlugin(cardId: string | null, notify: Notify): ScenePlug
       setAssets([]);
       if (!pid) return;
       try {
-        const list = await debugApi.listSceneAssets(pid);
+        // 包的列表顺手刷一下:封面音乐记在包上
+        const [list] = await Promise.all([debugApi.listSceneAssets(pid), refreshPacks()]);
         if (cardRef.current === forCard && packRef.current === pid) setAssets(list);
       } catch (e) {
         notify('error', `场景素材读取失败: ${errText(e)}`);
       }
     },
-    [notify],
+    [notify, refreshPacks],
   );
 
   useEffect(() => {
@@ -125,6 +130,21 @@ export function useScenePlugin(cardId: string | null, notify: Notify): ScenePlug
     if (packRef.current === pid) setAssets(next);
   };
 
+  const titleBgmId = packs.find((p) => p.id === packId)?.title_bgm_id ?? null;
+  const setTitleBgm = async (bgmId: string | null) => {
+    const pid = packRef.current;
+    if (!pid) return;
+    // 先改本地,下拉框马上跟手;写库失败再以库里的为准
+    setPacks((ps) => ps.map((p) => (p.id === pid ? { ...p, title_bgm_id: bgmId } : p)));
+    try {
+      const saved = await debugApi.updateScenePack(pid, { title_bgm_id: bgmId });
+      setPacks((ps) => ps.map((p) => (p.id === pid ? saved : p)));
+    } catch (e) {
+      notify('error', `封面音乐保存失败: ${errText(e)}`);
+      await refreshPacks();
+    }
+  };
+
   const forgetPack = (pid: string) => {
     if (packRef.current === pid) {
       packRef.current = null;
@@ -140,6 +160,8 @@ export function useScenePlugin(cardId: string | null, notify: Notify): ScenePlug
     refreshPacks,
     packId,
     assets,
+    titleBgmId,
+    setTitleBgm,
     bindPack,
     changeAssets,
     forgetPack,

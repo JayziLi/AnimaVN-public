@@ -45,6 +45,7 @@ def _out(conn: ApiConnection) -> ConnectionOut:
         has_api_key=bool(conn.api_key),
         is_active=conn.is_active,
         stream=conn.stream,
+        thinking=conn.thinking,
         cached_models=conn.cached_models,
         cached_models_at=conn.cached_models_at,
     )
@@ -65,6 +66,7 @@ def create_connection(req: ConnectionCreate, db: Session = Depends(get_db)):
         api_key=req.api_key or None,
         model=req.model,
         stream=req.stream,
+        thinking=req.thinking,
         # the first connection ever becomes active so chat works right away
         is_active=db.scalar(select(ApiConnection)) is None,
     )

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -33,6 +33,8 @@ class ApiConnection(Base):
     # per-connection because support is a property of the endpoint, not of us:
     # plenty of relays advertise the OpenAI dialect but choke on stream=True
     stream: Mapped[bool] = mapped_column(default=True)
+    # 思考深浅:None = 不传,跟服务默认;off / low / high / max(见 app/llm/thinking.py)
+    thinking: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -97,8 +99,28 @@ class CardSprite(Base):
     mime: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # 排第一的是默认表情:一条回复里还没出现标签时用它
     sort: Mapped[int] = mapped_column(Integer, default=0)
+    # 关掉 = 游戏里当它不存在(不进 {{sprites}}、不认它的名字),但行和图都留着,
+    # 随时能再打开。名字照样占着,免得打开时和别的行撞名
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 图里的脸在哪(app/sprite_faces.py 的结果),视觉小说按它对齐。null = 还没找过
+    face_scan: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class CardSpriteLayout(Base):
+    """一张卡的立绘在视觉小说里怎么摆:在按脸自动对齐的基础上再挪一挪、放大缩小。
+    所有角色共用的「人物大小」「头的高度」在立绘插件的全局配置里。单独一张表的理由同 CardScenePack。
+    dx / dy 以舞台高度为单位,正数往右 / 往下。"""
+
+    __tablename__ = "card_sprite_layouts"
+
+    card_id: Mapped[str] = mapped_column(ForeignKey("tavern_cards.id"), primary_key=True)
+    # 关掉 = 不按脸对齐,回到撑满舞台高度、居中
+    auto: Mapped[bool] = mapped_column(Boolean, default=True)
+    zoom: Mapped[float] = mapped_column(Float, default=1.0)
+    dx: Mapped[float] = mapped_column(Float, default=0.0)
+    dy: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class AppSetting(Base):
@@ -128,6 +150,8 @@ class ScenePack(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(Text, default="")
+    # 标题画面(封面)放哪首:包里的一条 bgm;NULL = 放排第一的那首
+    title_bgm_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -156,6 +180,8 @@ class SceneAsset(Base):
     focus_x: Mapped[int] = mapped_column(Integer, default=50)
     # 仅背景:换到这个场景时自动换上的曲子(同一个包里的一条 bgm)
     bgm_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # 同 CardSprite.enabled。包是几张卡共用的,关了对这些卡都生效
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

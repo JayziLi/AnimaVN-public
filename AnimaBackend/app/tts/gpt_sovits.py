@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 
 from app.tts.base import TTSError, VoiceSpec
-from app.tts.http import make_tts_client, transport_error
+from app.tts.http import REF_TIMEOUT, make_tts_client, read_reference, transport_error
 
 COLD_TIMEOUT = 90.0
 WARM_TIMEOUT = 30.0
@@ -109,6 +109,14 @@ class GptSovitsEngine:
             async with make_tts_client(self.base_url, PING_TIMEOUT) as client:
                 # api_v2 是 FastAPI,/docs 一直在;收到任何 HTTP 响应就说明连得上
                 await client.get(f"{self.base_url}/docs")
+        except httpx.HTTPError as e:
+            raise self._transport_error(e) from e
+
+    async def reference_audio(self, path: str) -> tuple[bytes, str]:
+        # 不进锁:只读一个文件,不碰权重
+        try:
+            async with make_tts_client(self.base_url, REF_TIMEOUT) as client:
+                return await read_reference(client, self.base_url, "GPT-SoVITS", path)
         except httpx.HTTPError as e:
             raise self._transport_error(e) from e
 

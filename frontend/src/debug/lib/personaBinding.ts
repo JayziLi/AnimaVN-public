@@ -20,13 +20,10 @@ export const EMPTY_BINDINGS: PersonaBindings = { default: null, cards: {} };
 /** 后端存的是任意 JSON —— 缺字段或类型不对的丢掉 */
 export function normalizeBindings(raw: unknown): PersonaBindings {
   const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  const cards: Record<string, string> = {};
-  if (r.cards && typeof r.cards === 'object') {
-    for (const [k, v] of Object.entries(r.cards as Record<string, unknown>)) {
-      if (typeof v === 'string' && v) cards[k] = v;
-    }
-  }
-  return { default: typeof r.default === 'string' && r.default ? r.default : null, cards };
+  return {
+    default: typeof r.default === 'string' && r.default ? r.default : null,
+    cards: cardMapOf(r.cards),
+  };
 }
 
 /** 选中这张卡时该用哪个人设,以及是绑的还是默认的;null = 不动 */
@@ -41,12 +38,27 @@ export function personaForCard(
   return null;
 }
 
-/** 把这张卡绑到某个人设;personaId 为 null 是解绑 */
-export function bindCard(b: PersonaBindings, cardId: string, personaId: string | null): PersonaBindings {
+/** 把这张卡绑到某个人设(预设绑定也用它);id 为 null 是解绑 */
+export function bindCard<T extends { cards: Record<string, string> }>(
+  b: T,
+  cardId: string,
+  id: string | null,
+): T {
   const cards = { ...b.cards };
-  if (personaId) cards[cardId] = personaId;
+  if (id) cards[cardId] = id;
   else delete cards[cardId];
   return { ...b, cards };
+}
+
+/** 角色卡 id → 绑定的 id 这张表:后端存的是任意 JSON,不是字符串的丢掉 */
+export function cardMapOf(raw: unknown): Record<string, string> {
+  const cards: Record<string, string> = {};
+  if (raw && typeof raw === 'object') {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === 'string' && v) cards[k] = v;
+    }
+  }
+  return cards;
 }
 
 /** 人设删了:指向它的绑定和默认都清掉 */

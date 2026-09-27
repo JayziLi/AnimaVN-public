@@ -227,6 +227,49 @@ def test_list_models_returns_remote_ids(monkeypatch):
     assert run(scenario()) == ["claude-a", "claude-b"]
 
 
+@pytest.mark.parametrize(
+    ("thinking", "extra"),
+    [
+        (None, {}),
+        ("off", {"thinking": {"type": "disabled"}}),
+        ("low", {"output_config": {"effort": "low"}}),
+        ("max", {"output_config": {"effort": "max"}}),
+    ],
+)
+def test_thinking_level_rides_along_on_complete_and_stream(monkeypatch, thinking, extra):
+    payloads: list[dict] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        if payload.get("stream"):
+            return sse_response(
+                [
+                    {"type": "message_start", "message": message_response([])},
+                    {"type": "message_stop"},
+                ]
+            )
+        return httpx.Response(200, json=message_response(["好"]))
+
+    client = install_transport(monkeypatch, handler)
+
+    async def scenario():
+        try:
+            provider = AnthropicProvider("secret", "https://anthropic.test", thinking)
+            messages = [ChatMessage(role="user", content="你好")]
+            await provider.complete(messages, "claude-test")
+            _ = [chunk async for chunk in provider.stream(messages, "claude-test")]
+        finally:
+            await client.aclose()
+
+    run(scenario())
+
+    assert len(payloads) == 2
+    known = ("model", "messages", "system", "max_tokens", "stream")
+    for payload in payloads:
+        assert {k: v for k, v in payload.items() if k not in known} == extra
+
+
 def test_stream_separates_thinking_and_text_deltas(monkeypatch):
     events = [
         (

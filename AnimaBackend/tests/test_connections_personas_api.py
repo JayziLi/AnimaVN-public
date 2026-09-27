@@ -44,6 +44,31 @@ def test_connection_key_can_be_explicitly_cleared(client: TestClient, make_conne
     assert updated.json()["has_api_key"] is False
 
 
+def test_connection_thinking_defaults_to_the_service_and_can_be_set_and_cleared(
+    client: TestClient, make_connection
+):
+    connection = make_connection()
+    url = f"/api/connections/{connection['id']}"
+
+    low = client.put(url, json={"thinking": "low"})
+    renamed = client.put(url, json={"name": "改名"})
+    cleared = client.put(url, json={"thinking": None})
+
+    assert connection["thinking"] is None
+    assert low.json()["thinking"] == "low"
+    assert renamed.json()["thinking"] == "low"
+    assert cleared.json()["thinking"] is None
+    assert make_connection(thinking="off")["thinking"] == "off"
+
+
+def test_connection_thinking_rejects_unknown_levels(client: TestClient, make_connection):
+    connection = make_connection()
+
+    response = client.put(f"/api/connections/{connection['id']}", json={"thinking": "medium"})
+
+    assert response.status_code == 422
+
+
 def test_deleting_active_connection_promotes_remaining_connection(
     client: TestClient, make_connection
 ):

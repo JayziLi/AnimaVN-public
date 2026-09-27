@@ -74,6 +74,56 @@ def test_complete_preserves_openai_message_roles_and_model(monkeypatch):
     }
 
 
+COMPLETION = {
+    "id": "chatcmpl-test",
+    "object": "chat.completion",
+    "created": 0,
+    "model": "model-a",
+    "choices": [
+        {"index": 0, "message": {"role": "assistant", "content": "好"}, "finish_reason": "stop"}
+    ],
+}
+
+
+@pytest.mark.parametrize(
+    ("thinking", "extra"),
+    [
+        (None, {}),
+        ("off", {"thinking": {"type": "disabled"}}),
+        ("low", {"reasoning_effort": "low"}),
+        ("max", {"reasoning_effort": "max"}),
+    ],
+)
+def test_thinking_level_rides_along_on_complete_and_stream(monkeypatch, thinking, extra):
+    payloads: list[dict] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        if payload.get("stream"):
+            return httpx.Response(
+                200, headers={"content-type": "text/event-stream"}, content=b"data: [DONE]\n\n"
+            )
+        return httpx.Response(200, json=COMPLETION)
+
+    client = install_transport(monkeypatch, handler)
+
+    async def scenario():
+        try:
+            provider = OpenAICompatibleProvider("secret", "https://llm.test/v1", thinking)
+            messages = [ChatMessage(role="user", content="你好")]
+            await provider.complete(messages, "model-a")
+            _ = [chunk async for chunk in provider.stream(messages, "model-a")]
+        finally:
+            await client.aclose()
+
+    run(scenario())
+
+    assert len(payloads) == 2
+    for payload in payloads:
+        assert {k: v for k, v in payload.items() if k not in ("model", "messages", "stream")} == extra
+
+
 def test_local_openai_compatible_endpoint_works_without_user_api_key(monkeypatch):
     captured_authorization = None
 

@@ -7,13 +7,22 @@
 
 import re
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
-from sqlalchemy import delete, func, select
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, undefer
 
 from app.db import get_db
-from app.models import CardSprite, TavernCard
-from app.schemas import CardSpriteCreate, CardSpriteOut, CardSpriteUpdate, SpriteReorderRequest
+from app.images import MAX_WIDTH, MIN_WIDTH, shrink_image
+from app.models import CardSprite, CardSpriteLayout, TavernCard
+from app.schemas import (
+    CardSpriteCreate,
+    CardSpriteOut,
+    CardSpriteUpdate,
+    SpriteLayoutOut,
+    SpriteLayoutUpdate,
+    SpriteReorderRequest,
+)
+from app.sprite_faces import face_thumbnail, scan
 
 router = APIRouter(prefix="/api/tavern/cards/{card_id}/sprites", tags=["sprites"])
 
@@ -55,6 +64,8 @@ def _out(sprite: CardSprite) -> CardSpriteOut:
         has_image=sprite.mime is not None,
         image_version=_version(sprite),
         sort=sprite.sort,
+        enabled=sprite.enabled,
+        face_scan=sprite.face_scan,
     )
 
 
@@ -146,6 +157,120 @@ def create_sprite(card_id: str, req: CardSpriteCreate, db: Session = Depends(get
     return _out(sprite)
 
 
+# ── 位置:按脸对齐 + 每张卡的微调 ──
+# /layout 要写在 /{sprite_id} 前面,不然 PUT /layout 会被当成改一张叫 layout 的立绘
+
+
+def _layout_out(row: CardSpriteLayout | None) -> SpriteLayoutOut:
+    if row is None:
+        return SpriteLayoutOut(auto=True, zoom=1.0, dx=0.0, dy=0.0)
+    return SpriteLayoutOut(auto=row.auto, zoom=row.zoom, dx=row.dx, dy=row.dy)
+
+
+@router.get("/layout", response_model=SpriteLayoutOut)
+def get_sprite_layout(card_id: str, db: Session = Depends(get_db)):
+    _load_card(card_id, db)
+    return _layout_out(db.get(CardSpriteLayout, card_id))
+
+
+@router.put("/layout", response_model=SpriteLayoutOut)
+def update_sprite_layout(card_id: str, req: SpriteLayoutUpdate, db: Session = Depends(get_db)):
+    _load_card(card_id, db)
+    row = db.get(CardSpriteLayout, card_id)
+    if row is None:
+        row = CardSpriteLayout(card_id=card_id, auto=True, zoom=1.0, dx=0.0, dy=0.0)
+        db.add(row)
+    for key, value in req.model_dump(exclude_none=True).items():
+        setattr(row, key, value)
+    db.commit()
+    db.refresh(row)
+    return _layout_out(row)
+
+
+@router.get("/face")
+def get_card_face(
+    card_id: str,
+    request: Request,
+    size: int = Query(96, ge=32, le=256),
+    db: Session = Depends(get_db),
+):
+    """封面上的角色头像圈:这张卡的默认立绘(排第一的、启用的、有图的)按脸裁一张小图。
+
+    整张立绘动辄几百 KB,封面上一排十几个圆只要几 KB 的脸。ETag 跟着立绘、版本、脸框走,
+    浏览器每次问一下,没变就 304。没有带图的立绘时 404,前端退回卡面头像。
+    """
+    _load_card(card_id, db)
+    rows = db.scalars(
+        select(CardSprite)
+        .where(
+            CardSprite.card_id == card_id,
+            CardSprite.enabled.is_(True),
+            CardSprite.mime.is_not(None),
+        )
+        .order_by(CardSprite.sort, CardSprite.created_at)
+    ).all()
+    if not rows:
+        raise HTTPException(404, "这张卡还没有带图的立绘")
+    sprite = rows[0]
+    face = _face_of(sprite, rows)
+    box = "-".join(f"{face[k]:.4f}" for k in "xywh") if face else "none"
+    etag = f'"{sprite.id}.{_version(sprite)}.{size}.{box}"'
+    headers = {"ETag": etag, "Cache-Control": "private, no-cache", "X-Content-Type-Options": "nosniff"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+
+    data = db.scalar(select(CardSprite.image).where(CardSprite.id == sprite.id))
+    thumb = face_thumbnail(data, face, size)
+    if thumb is None:
+        raise HTTPException(503, "服务器上没装 OpenCV,裁不了头像")
+    return Response(content=thumb, media_type="image/webp", headers=headers)
+
+
+def _face_of(sprite: CardSprite, rows: list[CardSprite]) -> dict | None:
+    """这张立绘的脸框;它自己没认出脸时,借同样画布大小的其他表情的(差分的脸位置一样)"""
+    def canvas(row: CardSprite) -> tuple | None:
+        found = row.face_scan or {}
+        size = found.get("width"), found.get("height")
+        return None if None in size else size
+
+    own = (sprite.face_scan or {}).get("face")
+    if own or canvas(sprite) is None:
+        return own
+    for row in rows:
+        if canvas(row) == canvas(sprite) and (row.face_scan or {}).get("face"):
+            return row.face_scan["face"]
+    return None
+
+
+@router.post("/scan-faces", response_model=list[CardSpriteOut])
+def scan_sprite_faces(card_id: str, rescan: bool = False, db: Session = Depends(get_db)):
+    """给还没找过脸的立绘补上(rescan=true 时全部重找)。
+
+    只写 face_scan、不动 updated_at:图没变,图片地址里的版本号就不能变,
+    不然浏览器要把整套图重新下载一遍。
+    """
+    _load_card(card_id, db)
+    query = (
+        select(CardSprite)
+        .options(undefer(CardSprite.image))
+        .where(CardSprite.card_id == card_id, CardSprite.image.is_not(None))
+    )
+    if not rescan:
+        query = query.where(CardSprite.face_scan.is_(None))
+    for row in db.scalars(query).all():
+        result = scan(row.image)
+        if result is None:
+            raise HTTPException(503, "服务器上没装 OpenCV,找不了脸;立绘先按撑满高度、居中摆")
+        db.execute(
+            update(CardSprite)
+            .where(CardSprite.id == row.id)
+            .values(face_scan=result, updated_at=CardSprite.updated_at)
+        )
+    db.commit()
+    db.expire_all()
+    return list_sprites(card_id, db)
+
+
 @router.put("/{sprite_id}", response_model=CardSpriteOut)
 def update_sprite(
     card_id: str, sprite_id: str, req: CardSpriteUpdate, db: Session = Depends(get_db)
@@ -160,6 +285,8 @@ def update_sprite(
     sprite.aliases = aliases
     if updates.get("description") is not None:
         sprite.description = updates["description"].strip()
+    if updates.get("enabled") is not None:
+        sprite.enabled = updates["enabled"]
     db.commit()
     db.refresh(sprite)
     return _out(sprite)
@@ -198,13 +325,21 @@ async def upload_sprite_image(
         raise HTTPException(400, "只支持 PNG / JPEG / WebP / GIF 图片")
     sprite.image = data
     sprite.mime = mime
+    # 没装 OpenCV 时是 None,之后由 scan-faces 补
+    sprite.face_scan = scan(data)
     db.commit()
     db.refresh(sprite)
     return _out(sprite)
 
 
 @router.get("/{sprite_id}/image")
-def get_sprite_image(card_id: str, sprite_id: str, db: Session = Depends(get_db)):
+def get_sprite_image(
+    card_id: str,
+    sprite_id: str,
+    w: int | None = Query(None, ge=MIN_WIDTH, le=MAX_WIDTH),
+    db: Session = Depends(get_db),
+):
+    """立绘原图;带 ?w= 时缩到这个宽度的 WebP(取色用,见 app/images.py)"""
     sprite = db.scalar(
         select(CardSprite)
         .options(undefer(CardSprite.image))
@@ -212,9 +347,10 @@ def get_sprite_image(card_id: str, sprite_id: str, db: Session = Depends(get_db)
     )
     if sprite is None or sprite.image is None or sprite.mime is None:
         raise HTTPException(404, "这条立绘还没有图")
+    small = shrink_image(sprite.image, w) if w else None
     return Response(
-        content=sprite.image,
-        media_type=sprite.mime,
+        content=small or sprite.image,
+        media_type="image/webp" if small else sprite.mime,
         headers={
             # 前端请求的 URL 里带着 ?v=image_version,换图后 URL 就变了,
             # 所以同一个 URL 对应的内容永远不会变,可以放心长期缓存
@@ -227,10 +363,11 @@ def get_sprite_image(card_id: str, sprite_id: str, db: Session = Depends(get_db)
 def delete_card_sprites(card_id: str, db: Session) -> None:
     """删卡时由 tavern.delete_card 调用(SQLite 默认不启用外键约束,不会自动级联)。"""
     db.execute(delete(CardSprite).where(CardSprite.card_id == card_id))
+    db.execute(delete(CardSpriteLayout).where(CardSpriteLayout.card_id == card_id))
 
 
 def copy_card_sprites(src_id: str, dst_id: str, db: Session) -> None:
-    """复制卡时连立绘映射一起复制 —— 副本本来就应该和原卡长得一样。"""
+    """复制卡时连立绘映射和摆法一起复制 —— 副本本来就应该和原卡长得一样。"""
     rows = db.scalars(
         select(CardSprite).options(undefer(CardSprite.image)).where(CardSprite.card_id == src_id)
     ).all()
@@ -244,5 +381,14 @@ def copy_card_sprites(src_id: str, dst_id: str, db: Session) -> None:
                 image=r.image,
                 mime=r.mime,
                 sort=r.sort,
+                enabled=r.enabled,
+                face_scan=r.face_scan,
+            )
+        )
+    layout = db.get(CardSpriteLayout, src_id)
+    if layout is not None:
+        db.add(
+            CardSpriteLayout(
+                card_id=dst_id, auto=layout.auto, zoom=layout.zoom, dx=layout.dx, dy=layout.dy
             )
         )

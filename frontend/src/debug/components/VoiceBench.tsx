@@ -6,7 +6,14 @@
  * 句子会作废重念(useVoicePlugin 比较前后的设置)。
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from 'react';
 import { debugApi, type EmoMode, type TtsApiType, type VoiceParams } from '../lib/api';
 import type { VoicePluginState } from '../plugins/useVoicePlugin';
 import {
@@ -16,9 +23,13 @@ import {
   SPEED_RANGE,
   TEXT_SPLIT_METHODS,
   VOICE_LANGS,
+  VOICE_SAMPLES,
   draftOf,
   draftSummary,
   sameDraft,
+  sampleIn,
+  sampleLangOf,
+  type SampleLang,
   type VoiceDraft,
 } from '../plugins/voice';
 import { bgmPlayer } from '../vn/bgm';
@@ -28,32 +39,6 @@ import { errText, type Notify } from './pluginRunner';
 /** 最多留几条试听结果(一条十秒的 wav 约 1 MB) */
 const MAX_TAKES = 20;
 const SEED_MAX = 2 ** 32 - 1;
-
-/** 常用试听句:按要念的语言给,点一下填进去 */
-const SAMPLES: Record<'zh' | 'ja', { name: string; text: string }[]> = {
-  zh: [
-    { name: '日常', text: '你好，今天过得怎么样？我一直在等你。' },
-    { name: '开心', text: '太好了！我就知道你一定可以做到的！' },
-    { name: '难过', text: '……没关系的，我一个人也可以。你不用担心我。' },
-    { name: '惊讶', text: '诶？！真的吗？你什么时候回来的？' },
-    { name: '生气', text: '你到底有没有在听我说话啊！' },
-    {
-      name: '长句',
-      text: '其实我一直想告诉你，那天在车站分开之后，我每天都会想起你说过的话。虽然不知道你还记不记得，但对我来说，那是很重要的约定。',
-    },
-  ],
-  ja: [
-    { name: '日常', text: 'おかえりなさい。今日はどうだった？ずっと待ってたんだよ。' },
-    { name: '开心', text: 'やった！絶対できるって信じてたよ！' },
-    { name: '难过', text: '……大丈夫。一人でも平気だから、心配しないで。' },
-    { name: '惊讶', text: 'えっ？！本当に？いつ帰ってきたの？' },
-    { name: '生气', text: 'ちょっと、ちゃんと話聞いてるの？' },
-    {
-      name: '长句',
-      text: '実はずっと言いたかったんだ。あの日駅で別れてから、あなたの言葉を毎日思い出してた。覚えてるかわからないけど、私にとっては大切な約束なんだ。',
-    },
-  ],
-};
 
 interface Take {
   id: number;
@@ -76,9 +61,11 @@ interface Props {
   card: { id: string; name: string } | null;
   /** 试听文本:和下面情绪表里的 ▶ 共用 */
   sample: string;
-  onSample: (text: string) => void;
+  onSample: Dispatch<SetStateAction<string>>;
   notify: Notify;
 }
+
+const SAMPLE_LANG_NAME: Record<SampleLang, string> = { zh: '中文', ja: '日文' };
 
 const secs = (ms: number) => `${(ms / 1000).toFixed(1)} 秒`;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -109,6 +96,19 @@ export function VoiceBench({ voice, card, sample, onSample, notify }: Props) {
       delete next[id];
       return next;
     });
+
+  // 例句跟着要念的语言走。换声音、切中文 / 日文时,框里还是内置例句的话换成同一句的
+  // 这个语言版本 —— 不然日语声音会去念框里剩下的中文句子
+  const sampleLang = sampleLangOf(draft?.text_lang ?? 'zh');
+  useEffect(() => {
+    onSample((s) => sampleIn(s, sampleLang));
+  }, [sampleLang, onSample]);
+
+  /** 切例句语言 = 这次试听按这个语言念(和「参数」里的语言是同一个,没保存不影响游戏) */
+  const pickSampleLang = (lang: SampleLang) => {
+    if (!profile || !draft || lang === sampleLang) return;
+    setDrafts((d) => ({ ...d, [profile.id]: { ...draft, text_lang: lang } }));
+  };
 
   const [seedText, setSeedText] = useState('');
   const seed = seedText.trim() === '' ? null : Number(seedText);
@@ -264,7 +264,9 @@ export function VoiceBench({ voice, card, sample, onSample, notify }: Props) {
   }
 
   const isMain = binding.main === profile.id;
-  const samples = SAMPLES[draft.text_lang === 'ja' ? 'ja' : 'zh'];
+  const samples = VOICE_SAMPLES[sampleLang];
+  const langName = (lang: string) => VOICE_LANGS[engine].find((l) => l.value === lang)?.name ?? lang;
+  const langChanged = saved !== null && draft.text_lang !== saved.text_lang;
   const missingRef = engine === 'indextts' ? !profile.ref_path : profile.emotions.length === 0;
   const summary = draftSummary(draft, engine);
 
@@ -330,12 +332,31 @@ export function VoiceBench({ voice, card, sample, onSample, notify }: Props) {
         onChange={(e) => onSample(e.target.value)}
       />
       <div className="vb-chips">
+        <span className="vb-lang" role="radiogroup" aria-label="例句语言">
+          {(['zh', 'ja'] as const).map((l) => (
+            <button
+              key={l}
+              role="radio"
+              aria-checked={sampleLang === l}
+              className={`vb-chip${sampleLang === l ? ' on' : ''}`}
+              onClick={() => pickSampleLang(l)}
+              title={`换成${SAMPLE_LANG_NAME[l]}例句,这次试听按${SAMPLE_LANG_NAME[l]}念`}
+            >
+              {SAMPLE_LANG_NAME[l]}
+            </button>
+          ))}
+        </span>
         {samples.map((s) => (
           <button key={s.name} className="vb-chip" onClick={() => onSample(s.text)}>
             {s.name}
           </button>
         ))}
       </div>
+      {langChanged && saved && (
+        <span className="sp-group-note">
+          「{profile.name}」在游戏里念{langName(saved.text_lang)},这里改成念{langName(draft.text_lang)}只是试听,不保存就不影响游戏
+        </span>
+      )}
 
       <div className="vb-params-head">
         <button className="vp-head vb-toggle" onClick={() => setShowParams(!showParams)} aria-expanded={showParams}>

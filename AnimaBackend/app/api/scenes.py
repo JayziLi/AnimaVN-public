@@ -7,12 +7,13 @@
 文件同样存 BLOB、列表只回元数据、取文件的端点带版本号长缓存。
 """
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, undefer
 
 from app.api.sprites import MAX_IMAGE_BYTES, clean_aliases, clean_label, sniff_image_mime
 from app.db import get_db
+from app.images import MAX_WIDTH, MIN_WIDTH, shrink_image
 from app.models import CardScenePack, SceneAsset, ScenePack, TavernCard
 from app.schemas import (
     CardScenePackIn,
@@ -81,7 +82,14 @@ def _pack_out(pack: ScenePack, db: Session) -> ScenePackOut:
         bg_count=counts.get("bg", 0),
         bgm_count=counts.get("bgm", 0),
         card_count=cards or 0,
+        title_bgm_id=pack.title_bgm_id,
     )
+
+
+def _check_own_bgm(pack_id: str, bgm_id: str, db: Session, what: str) -> None:
+    target = db.get(SceneAsset, bgm_id)
+    if target is None or target.pack_id != pack_id or target.kind != "bgm":
+        raise HTTPException(400, f"{what}必须是同一个场景包里的一首 BGM")
 
 
 def _asset_out(a: SceneAsset) -> SceneAssetOut:
@@ -99,6 +107,7 @@ def _asset_out(a: SceneAsset) -> SceneAssetOut:
         focus_x=a.focus_x,
         bgm_id=a.bgm_id,
         sort=a.sort,
+        enabled=a.enabled,
     )
 
 
@@ -164,6 +173,10 @@ def update_pack(pack_id: str, req: ScenePackUpdate, db: Session = Depends(get_db
         pack.name = _clean_pack_name(req.name, db, exclude_id=pack_id)
     if req.description is not None:
         pack.description = req.description.strip()
+    if "title_bgm_id" in req.model_fields_set:
+        if req.title_bgm_id is not None:
+            _check_own_bgm(pack_id, req.title_bgm_id, db, "封面音乐")
+        pack.title_bgm_id = req.title_bgm_id
     db.commit()
     db.refresh(pack)
     return _pack_out(pack, db)
@@ -245,10 +258,10 @@ def update_asset(
         if bgm_id is not None:
             if asset.kind != "bg":
                 raise HTTPException(400, "只有背景能设默认音乐")
-            target = db.get(SceneAsset, bgm_id)
-            if target is None or target.pack_id != pack_id or target.kind != "bgm":
-                raise HTTPException(400, "默认音乐必须是同一个场景包里的一首 BGM")
+            _check_own_bgm(pack_id, bgm_id, db, "默认音乐")
         asset.bgm_id = bgm_id
+    if updates.get("enabled") is not None:
+        asset.enabled = updates["enabled"]
 
     db.commit()
     db.refresh(asset)
@@ -259,11 +272,16 @@ def update_asset(
 def delete_asset(pack_id: str, asset_id: str, db: Session = Depends(get_db)):
     asset = _load_asset(pack_id, asset_id, db)
     if asset.kind == "bgm":
-        # 把这首当默认曲的背景改回「没有默认曲」,不然前端会拿着一个不存在的 id
+        # 把这首当默认曲的背景、当封面音乐的包改回默认,不然前端会拿着一个不存在的 id
         db.execute(
             update(SceneAsset)
             .where(SceneAsset.pack_id == pack_id, SceneAsset.bgm_id == asset_id)
             .values(bgm_id=None)
+        )
+        db.execute(
+            update(ScenePack)
+            .where(ScenePack.id == pack_id, ScenePack.title_bgm_id == asset_id)
+            .values(title_bgm_id=None)
         )
     db.delete(asset)
     db.commit()
@@ -310,7 +328,13 @@ async def upload_asset_file(
 
 
 @router.get(PACKS + "/{pack_id}/assets/{asset_id}/file")
-def get_asset_file(pack_id: str, asset_id: str, db: Session = Depends(get_db)):
+def get_asset_file(
+    pack_id: str,
+    asset_id: str,
+    w: int | None = Query(None, ge=MIN_WIDTH, le=MAX_WIDTH),
+    db: Session = Depends(get_db),
+):
+    """素材文件;背景带 ?w= 时缩到这个宽度的 WebP(标题画面取色用,见 app/images.py)"""
     asset = db.scalar(
         select(SceneAsset)
         .options(undefer(SceneAsset.data))
@@ -318,9 +342,10 @@ def get_asset_file(pack_id: str, asset_id: str, db: Session = Depends(get_db)):
     )
     if asset is None or asset.data is None or asset.mime is None:
         raise HTTPException(404, "这条素材还没有文件")
+    small = shrink_image(asset.data, w) if w and asset.kind == "bg" else None
     return Response(
-        content=asset.data,
-        media_type=asset.mime,
+        content=small or asset.data,
+        media_type="image/webp" if small else asset.mime,
         headers={
             # URL 里带 ?v=file_version,换文件后 URL 就变了,同一个 URL 的内容永远不变
             "Cache-Control": "private, max-age=31536000, immutable",

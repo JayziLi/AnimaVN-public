@@ -86,6 +86,60 @@ def test_default_bgm_must_be_a_bgm_in_the_same_pack_and_is_cleared_on_delete(cli
     assert all(a["bgm_id"] is None for a in client.get(base).json())
 
 
+def test_title_bgm_must_be_a_bgm_in_the_same_pack_and_is_cleared_on_delete(client: TestClient):
+    pack = _pack(client)
+    other = _pack(client, "千年")
+    base = _assets(pack["id"])
+    bg = client.post(base, json={"kind": "bg", "label": "食堂"}).json()
+    bgm = client.post(base, json={"kind": "bgm", "label": "日常"}).json()
+    foreign = client.post(_assets(other["id"]), json={"kind": "bgm", "label": "日常"}).json()
+    url = f"{PACKS}/{pack['id']}"
+
+    # 没设 = 封面放排第一的那首(前端决定)
+    assert pack["title_bgm_id"] is None
+    ok = client.put(url, json={"title_bgm_id": bgm["id"]})
+    assert ok.status_code == 200
+    assert ok.json()["title_bgm_id"] == bgm["id"]
+    # 只改名字不碰封面音乐
+    assert client.put(url, json={"name": "罗德岛本舰"}).json()["title_bgm_id"] == bgm["id"]
+    assert client.get(PACKS).json()[0]["title_bgm_id"] == bgm["id"]
+
+    assert client.put(url, json={"title_bgm_id": foreign["id"]}).status_code == 400
+    assert client.put(url, json={"title_bgm_id": bg["id"]}).status_code == 400
+    assert client.put(url, json={"title_bgm_id": "nope"}).status_code == 400
+
+    # 显式传 null = 回到默认
+    assert client.put(url, json={"title_bgm_id": None}).json()["title_bgm_id"] is None
+
+    # 删掉这首,封面音乐也回到默认
+    client.put(url, json={"title_bgm_id": bgm["id"]})
+    assert client.delete(f"{base}/{bgm['id']}").status_code == 204
+    assert client.get(PACKS).json()[0]["title_bgm_id"] is None
+
+
+def test_disabling_an_asset_keeps_the_row_names_and_default_bgm_link(client: TestClient):
+    pack = _pack(client)
+    base = _assets(pack["id"])
+    bg = client.post(base, json={"kind": "bg", "label": "食堂"}).json()
+    bgm = client.post(base, json={"kind": "bgm", "label": "日常"}).json()
+    client.put(f"{base}/{bg['id']}", json={"bgm_id": bgm["id"]})
+    assert (bg["enabled"], bgm["enabled"]) == (True, True)
+
+    off = client.put(f"{base}/{bgm['id']}", json={"enabled": False})
+    assert off.status_code == 200
+    assert off.json()["enabled"] is False
+
+    # 禁用不是删除:背景的默认曲还指着它(重新启用就接着用),名字照样占着,包里照样算数
+    listed = {a["label"]: a for a in client.get(base).json()}
+    assert (listed["食堂"]["bgm_id"], listed["日常"]["enabled"]) == (bgm["id"], False)
+    assert client.post(base, json={"kind": "bgm", "label": "日常"}).status_code == 409
+    assert client.get(PACKS).json()[0]["bgm_count"] == 1
+
+    client.put(f"{base}/{bg['id']}", json={"enabled": False, "focus_x": 20})
+    back = client.put(f"{base}/{bg['id']}", json={"enabled": True}).json()
+    assert (back["enabled"], back["focus_x"], back["bgm_id"]) == (True, 20, bgm["id"])
+
+
 def test_upload_checks_format_by_kind_and_serves_cacheable_bytes(client: TestClient):
     pack = _pack(client)
     base = _assets(pack["id"])
@@ -184,3 +238,22 @@ def test_deleting_pack_removes_assets_and_bindings(client: TestClient, make_card
     # 重新建一个同名包不会撞上残留的素材
     again = _pack(client)
     assert client.get(_assets(again["id"])).json() == []
+
+
+def test_background_file_serves_a_shrunk_copy_but_audio_ignores_width(client: TestClient):
+    import cv2
+    import numpy as np
+
+    pack = _pack(client)
+    base = _assets(pack["id"])
+    bg = client.post(base, json={"kind": "bg", "label": "食堂"}).json()
+    bgm = client.post(base, json={"kind": "bgm", "label": "日常"}).json()
+    jpg = cv2.imencode(".jpg", np.full((180, 320, 3), 90, np.uint8))[1].tobytes()
+    client.put(f"{base}/{bg['id']}/file", files={"file": ("a.jpg", jpg, "image/jpeg")})
+    client.put(f"{base}/{bgm['id']}/file", files={"file": ("a.mp3", MP3, "audio/mpeg")})
+
+    small = client.get(f"{base}/{bg['id']}/file?w=64")
+    assert small.headers["content-type"] == "image/webp"
+    img = cv2.imdecode(np.frombuffer(small.content, np.uint8), cv2.IMREAD_UNCHANGED)
+    assert img.shape[:2] == (36, 64)
+    assert client.get(f"{base}/{bgm['id']}/file?w=64").content == MP3

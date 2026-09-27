@@ -55,6 +55,9 @@ async function downloadAttachment(url: string, fallbackName: string): Promise<vo
 
 export type ApiType = 'openai_compatible' | 'anthropic' | 'mock';
 
+/** 思考深浅:null = 不传,跟服务默认。怎么翻译成请求参数见后端 app/llm/thinking.py */
+export type ThinkingLevel = 'off' | 'low' | 'high' | 'max';
+
 export interface DebugConnection {
   id: string;
   name: string;
@@ -65,6 +68,7 @@ export interface DebugConnection {
   is_active: boolean;
   /** 这个端点能不能流式 —— 是端点的属性不是我们的,不少中转站号称兼容却吃不下 stream=true */
   stream: boolean;
+  thinking: ThinkingLevel | null;
   cached_models: string[];
   cached_models_at: string | null;
 }
@@ -77,6 +81,8 @@ export interface ConnectionPayload {
   api_key?: string | null;
   model?: string;
   stream?: boolean;
+  /** null = 改回跟服务默认 */
+  thinking?: ThinkingLevel | null;
 }
 
 export interface CompleteResult {
@@ -519,6 +525,22 @@ export const debugApi = {
       body: JSON.stringify({ ids }),
     }),
 
+  /** 给还没找过脸的立绘补上;rescan = 整套重找。返回这张卡的全部立绘 */
+  scanSpriteFaces: (cardId: string, rescan = false) =>
+    request<CardSprite[]>(
+      `/api/tavern/cards/${cardId}/sprites/scan-faces${rescan ? '?rescan=true' : ''}`,
+      { method: 'POST' },
+    ),
+
+  getSpriteLayout: (cardId: string) =>
+    request<SpriteLayout>(`/api/tavern/cards/${cardId}/sprites/layout`),
+
+  putSpriteLayout: (cardId: string, layout: SpriteLayout) =>
+    request<SpriteLayout>(`/api/tavern/cards/${cardId}/sprites/layout`, {
+      method: 'PUT',
+      body: JSON.stringify(layout),
+    }),
+
   uploadSpriteImage: async (cardId: string, spriteId: string, file: Blob): Promise<CardSprite> => {
     const form = new FormData();
     form.append('file', file);
@@ -540,7 +562,10 @@ export const debugApi = {
       body: JSON.stringify({ name, description }),
     }),
 
-  updateScenePack: (packId: string, patch: { name?: string; description?: string }) =>
+  updateScenePack: (
+    packId: string,
+    patch: { name?: string; description?: string; title_bgm_id?: string | null },
+  ) =>
     request<ScenePack>(`/api/scene-packs/${packId}`, {
       method: 'PUT',
       body: JSON.stringify(patch),
@@ -647,6 +672,14 @@ export const debugApi = {
       body: JSON.stringify(req),
     }),
 
+  /** 声音配的一段参考音频(音色参考或某行情绪的参考),从语音服务那台机器上原样取回 —— 语音详情里试听 */
+  referenceAudio: async (profileId: string, path: string): Promise<ArrayBuffer> => {
+    const q = new URLSearchParams({ profile_id: profileId, path });
+    const res = await fetch(`${BASE_URL}/api/tts/reference?${q}`);
+    if (!res.ok) throw await failure(res);
+    return res.arrayBuffer();
+  },
+
   listVoices: () => request<VoiceProfile[]>('/api/voices'),
 
   createVoice: (payload: { name: string; connection_id: string } & VoiceProfilePatch) =>
@@ -748,6 +781,26 @@ export interface CardSprite {
   image_version: number;
   /** 排第一的是默认表情 */
   sort: number;
+  /** 关掉 = 游戏里当它不存在,行和图留着 */
+  enabled: boolean;
+  /** 图里的脸在哪;null = 还没找过 */
+  face_scan: SpriteFaceScan | null;
+}
+
+/** 后端 app/sprite_faces.py 的结果。位置都是占整张图的比例 */
+export interface SpriteFaceScan {
+  width: number | null;
+  height: number | null;
+  face: { x: number; y: number; w: number; h: number } | null;
+}
+
+/** 一张卡的立绘怎么摆:按脸自动对齐之后再挪、再放大缩小。dx / dy 以舞台高度为单位 */
+export interface SpriteLayout {
+  /** 关掉 = 不按脸对齐,撑满舞台高度、居中 */
+  auto: boolean;
+  zoom: number;
+  dx: number;
+  dy: number;
 }
 
 /** /api/emotion/match 的一条结果:标签 → 最像的候选 */
@@ -771,12 +824,21 @@ export interface SpritePayload {
   label?: string;
   aliases?: string[];
   description?: string;
+  enabled?: boolean;
 }
 
 /** <img src> 直接用的地址。带版本号:换图后 URL 变,浏览器就不会继续显示缓存里的旧图 */
 export function spriteImageUrl(s: CardSprite): string | null {
   if (!s.has_image) return null;
   return `${BASE_URL}/api/tavern/cards/${s.card_id}/sprites/${s.id}/image?v=${s.image_version}`;
+}
+
+/**
+ * 封面上的角色头像圈:后端把这张卡的默认立绘按脸裁成的小图。没有带图的立绘时 404,
+ * <img> 的 onError 里退回卡面头像。后端带 ETag,换了立绘自己会更新
+ */
+export function cardFaceUrl(cardId: string, size = 96): string {
+  return `${BASE_URL}/api/tavern/cards/${cardId}/sprites/face?size=${size}`;
 }
 
 // ---- 场景包 ----
@@ -791,6 +853,8 @@ export interface ScenePack {
   bgm_count: number;
   /** 绑了这个包的卡有几张 */
   card_count: number;
+  /** 标题画面(封面)放的那首 BGM;null = 放排第一的 */
+  title_bgm_id: string | null;
 }
 
 export interface SceneAsset {
@@ -814,6 +878,8 @@ export interface SceneAsset {
   bgm_id: string | null;
   /** 同类里排第一的是默认 */
   sort: number;
+  /** 关掉 = 游戏里当它不存在,文件留在包里 */
+  enabled: boolean;
 }
 
 export interface SceneAssetPatch {
@@ -823,6 +889,7 @@ export interface SceneAssetPatch {
   focus_x?: number;
   /** null = 不要默认曲 */
   bgm_id?: string | null;
+  enabled?: boolean;
 }
 
 /** 素材文件的地址;还没传文件时返回 null */

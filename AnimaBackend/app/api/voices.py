@@ -370,7 +370,7 @@ def reorder_emotions(profile_id: str, req: VoiceReorder, db: Session = Depends(g
 )
 def emotions_from_sprites(profile_id: str, req: VoiceFromSpritesIn, db: Session = Depends(get_db)):
     """每个立绘表情一行,向量按常见表情名预填;已有的行(名字或别名对上)不动,只加缺的。
-    这张卡一张立绘都没有时,按内置基础表情补(带上别名),和 {{sprites}} 的兜底是同一份"""
+    禁用的立绘不算;这张卡一张启用的立绘都没有时,按内置基础表情补(带上别名),和 {{sprites}} 的兜底是同一份"""
     profile = _load_profile(profile_id, db)
     conn = db.get(TtsConnection, profile.connection_id)
     if conn is None or conn.api_type != "indextts":
@@ -378,7 +378,7 @@ def emotions_from_sprites(profile_id: str, req: VoiceFromSpritesIn, db: Session 
     _load_card(req.card_id, db)
     sprites = db.scalars(
         select(CardSprite)
-        .where(CardSprite.card_id == req.card_id)
+        .where(CardSprite.card_id == req.card_id, CardSprite.enabled.is_(True))
         .order_by(CardSprite.sort, CardSprite.created_at)
     ).all()
     existing = list_emotions(profile_id, db)

@@ -100,6 +100,13 @@ export function resolveByLabel<T extends Labeled>(label: string, items: readonly
   );
 }
 
+/**
+ * 游戏里用的素材:禁用的当作不存在(不进提示词、不认标签、不显示)。只在插件抽屉里
+ * 看得到禁用的那些,好重新打开。每次返回新数组,放进依赖列表之前先 useMemo
+ */
+export const enabledOnly = <T extends { enabled: boolean }>(items: readonly T[]): T[] =>
+  items.filter((x) => x.enabled);
+
 // ---- 预设里的插件块 ----
 
 export type BlockState = 'no-preset' | 'missing' | 'off' | 'on';

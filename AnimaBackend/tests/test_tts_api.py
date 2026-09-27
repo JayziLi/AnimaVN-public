@@ -469,3 +469,65 @@ def test_explain_shows_the_indextts_request(client: TestClient, index_tts):
     assert (out["request"]["spk_audio_path"], out["request"]["emo_vector"]) == (SPK, HAPPY)
     assert (out["gpt_weights"], out["sovits_weights"]) == ("", "")
     assert index_tts.bodies() == []
+
+
+# ── 参考音频试听 ──────────────────────────────────────
+
+
+def reference(client: TestClient, profile_id: str, path: str):
+    return client.get("/api/tts/reference", params={"profile_id": profile_id, "path": path})
+
+
+def test_reference_audio_is_fetched_from_the_voice_service_as_is(client: TestClient, gsv):
+    _, voice = setup_voice(client)
+
+    r = reference(client, voice["id"], "D:/refs/开心.wav")
+
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "audio/wav"
+    assert r.content == "RIFFD:/refs/开心.wav".encode()
+    assert gsv.calls == [("ref", "D:/refs/开心.wav")]
+
+
+def test_reference_audio_only_serves_paths_the_voice_is_configured_with(client: TestClient, gsv):
+    _, voice = setup_voice(client)
+
+    other = reference(client, voice["id"], "D:/GPT-SoVITS/api_v2.py")
+
+    assert other.status_code == 404
+    assert other.json()["detail"] == "这个声音没有配这段参考音频"
+    assert reference(client, "nope", "D:/refs/开心.wav").status_code == 404
+    assert gsv.calls == []
+
+
+def test_reference_audio_explains_a_voice_service_without_the_route(client: TestClient, gsv):
+    _, voice = setup_voice(client)
+    gsv.ref_reply = httpx.Response(404, json={"detail": "Not Found"})
+
+    r = reference(client, voice["id"], "D:/refs/开心.wav")
+
+    assert r.status_code == 501
+    assert "/anima/ref" in r.json()["detail"]
+
+
+def test_reference_audio_passes_on_what_the_voice_service_says(client: TestClient, gsv):
+    _, voice = setup_voice(client)
+    gsv.ref_reply = httpx.Response(404, json={"detail": "参考音频不存在：D:/refs/开心.wav"})
+    missing = reference(client, voice["id"], "D:/refs/开心.wav")
+    gsv.ref_reply = httpx.ConnectError("refused")
+    down = reference(client, voice["id"], "D:/refs/开心.wav")
+
+    assert (missing.status_code, missing.json()["detail"]) == (404, "参考音频不存在：D:/refs/开心.wav")
+    assert down.status_code == 503
+    assert down.json()["detail"] == "连不上语音服务 http://gsv.test:9880(台式机没开机、GPT-SoVITS 没启动,或者网络不通)"
+
+
+def test_reference_audio_covers_the_indextts_speaker_reference(client: TestClient, index_tts):
+    _, voice = setup_index_voice(client)
+
+    r = reference(client, voice["id"], SPK)
+
+    # IndexTTS 小服务还没有这个接口:路径放行了、请求发到了,回一句说明
+    assert index_tts.calls == [("ref", SPK)]
+    assert r.status_code == 501
+    assert "IndexTTS" in r.json()["detail"]

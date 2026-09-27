@@ -18,15 +18,28 @@ export interface VNSettings {
   showThinking: boolean;
   /** 右上角显示当前模型 */
   showModel: boolean;
-  /** 进视觉小说先看标题画面;关掉就直接接着上次的对话 */
+  /** 进视觉小说先看标题画面;关掉就直接接着上次的对话(Beta) */
   titleScreen: boolean;
+  /** 标题画面的样式:海报 = 斜切纸面排版;电影 = 场景轮播的片头(Beta) */
+  titleStyle: TitleStyle;
   /** 翻页时停掉上一句的语音;关掉 = 上一句接着念,直到这句的语音开始 */
   voiceInterrupt: boolean;
   /** 自动播放时等这句的语音合成完、念完再翻 */
   autoWaitVoice: boolean;
   /** 念台词时 BGM 压到原音量的多少(1 = 不压) */
   duckLevel: number;
+  /** 主题色:按钮、名牌、滑块用的颜色(见 accent.ts) */
+  accent: VNAccent;
 }
+
+import { VN_ACCENTS, type VNAccent } from './accent';
+
+export type TitleStyle = 'poster' | 'cinema';
+
+export const TITLE_STYLES: { value: TitleStyle; name: string }[] = [
+  { value: 'poster', name: '海报' },
+  { value: 'cinema', name: '电影' },
+];
 
 const KEY = 'anima.vn.settings';
 
@@ -38,9 +51,11 @@ export const DEFAULT_VN_SETTINGS: VNSettings = {
   showThinking: true,
   showModel: true,
   titleScreen: true,
+  titleStyle: 'poster',
   voiceInterrupt: true,
   autoWaitVoice: true,
   duckLevel: 0.35,
+  accent: 'character',
 };
 
 export const TEXT_SPEEDS: { value: number; name: string }[] = [
@@ -84,9 +99,11 @@ export function loadVNSettings(): VNSettings {
     showThinking: bool(raw.showThinking, d.showThinking),
     showModel: bool(raw.showModel, d.showModel),
     titleScreen: bool(raw.titleScreen, d.titleScreen),
+    titleStyle: TITLE_STYLES.some((t) => t.value === raw.titleStyle) ? (raw.titleStyle as TitleStyle) : d.titleStyle,
     voiceInterrupt: bool(raw.voiceInterrupt, d.voiceInterrupt),
     autoWaitVoice: bool(raw.autoWaitVoice, d.autoWaitVoice),
     duckLevel: num(raw.duckLevel, 0, 1, d.duckLevel),
+    accent: VN_ACCENTS.some((a) => a.value === raw.accent) ? (raw.accent as VNAccent) : d.accent,
   };
 }
 

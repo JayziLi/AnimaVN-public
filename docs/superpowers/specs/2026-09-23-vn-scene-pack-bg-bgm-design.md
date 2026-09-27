@@ -34,7 +34,7 @@
 
 ## 数据
 
-- `scene_packs`:id、name(唯一)、description
+- `scene_packs`:id、name(唯一)、description、title_bgm_id(标题画面放的那首;空 = 排第一的 BGM,2026-09-27 加的,见 `2026-09-27-bgm-random-pool-design.md`)
 - `scene_assets`:pack_id、kind(`bg` / `bgm`)、label、aliases、description、data(BLOB)、mime、size、
   sort(同类里排第一的是默认)、focus_x(背景的竖屏焦点,0–100)、bgm_id(背景的默认曲)
 - `card_scene_packs`:card_id → pack_id。删卡时删绑定,复制卡时复制绑定,删包时删全部绑定

@@ -8,6 +8,7 @@ from anthropic import AsyncAnthropic
 from app.llm.base import ChatMessage, LLMProvider, StreamChunk
 from app.llm.errors import LLMError
 from app.llm.http_client import make_http_client
+from app.llm.thinking import anthropic_params
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,10 @@ def _log_usage(model: str, usage: Any) -> None:
 
 
 class AnthropicProvider(LLMProvider):
-    def __init__(self, api_key: str, base_url: str | None = None):
+    def __init__(self, api_key: str, base_url: str | None = None, thinking: str | None = None):
         self._base_url = base_url
+        # 连接上的思考深浅,每次请求都带上(见 app/llm/thinking.py)
+        self._extra = anthropic_params(thinking)
         self._client = AsyncAnthropic(
             api_key=api_key, base_url=base_url, http_client=make_http_client()
         )
@@ -85,6 +88,7 @@ class AnthropicProvider(LLMProvider):
                 system=system,
                 messages=turns,
                 max_tokens=1024,
+                **self._extra,
             )
         except Exception as e:
             raise self._map_error(e) from e
@@ -104,6 +108,7 @@ class AnthropicProvider(LLMProvider):
                 messages=turns,
                 max_tokens=1024,
                 stream=True,
+                **self._extra,
             )
         except Exception as e:
             raise self._map_error(e) from e

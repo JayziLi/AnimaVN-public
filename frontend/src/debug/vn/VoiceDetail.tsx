@@ -2,7 +2,7 @@
  * 「历史」里一句的语音详情 —— 排查语音用。从头到尾把这句怎么念摆出来:
  *   说话人 → 声音;立绘标签 → 认成哪个表情(精确 / 模型);要的情绪 → 声音情绪表里
  *   挑中哪一行(名字 / 别名 / 模型就近 / 默认)→ 参考音频和原文;发给语音服务的原样请求;
- *   缓存里有没有、这次放的时候怎么样。不念的句子写原因。
+ *   缓存里有没有、这次放的时候怎么样。不念的句子写原因。参考音频那几行能点 ▶ 听原声。
  *
  * 念的句子问后端 /api/tts/explain:和真正合成走同一套挑法,但不合成、不碰语音服务。
  */
@@ -17,8 +17,9 @@ import {
   voiceKey,
   voiceSkipReason,
 } from '../plugins/voice';
+import { bgmPlayer } from './bgm';
 import type { TagHit, VNLine } from './script';
-import { useVoice, type ClipState } from './voice';
+import { useVoice, voicePlayer, type ClipState } from './voice';
 
 interface Props {
   line: VNLine;
@@ -34,6 +35,8 @@ interface Props {
   profile: VoiceProfile | null;
   ctx: EmotionContext;
   voiceEnabled: boolean;
+  /** 插件设置里选了情绪不变 */
+  fixedEmotion: boolean;
   /** 流式时这条回复的最后一句(还在写) */
   streamingLast: boolean;
   /** 从这句接着看 */
@@ -107,6 +110,73 @@ const paramsOf = (req: Record<string, unknown>) =>
 
 const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : JSON.stringify(v));
 
+// ---- 参考音频试听:从语音服务那台机器上取回原声(后端转发,只放行这个声音配过的路径) ----
+
+/** 取过的原声留在内存里,反复听不用再取;太多就丢掉最早的(一段不到 1 MB) */
+const refAudio = new Map<string, Promise<ArrayBuffer>>();
+const REF_KEEP = 12;
+/** 正在放的是哪一段(播放器里只知道是 'preview') */
+let refPlaying: string | null = null;
+
+function loadRef(profileId: string, path: string): Promise<ArrayBuffer> {
+  const key = `${profileId}
+${path}`;
+  let p = refAudio.get(key);
+  if (!p) {
+    p = debugApi.referenceAudio(profileId, path);
+    // 失败的不留,下次重新取
+    p.catch(() => refAudio.delete(key));
+    refAudio.set(key, p);
+    while (refAudio.size > REF_KEEP) refAudio.delete(refAudio.keys().next().value as string);
+  }
+  return p;
+}
+
+function RefPlay({ profileId, path }: { profileId: string; path: string }) {
+  const snap = useVoice();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const key = `${profileId}
+${path}`;
+  const playing = snap.speaking === 'preview' && refPlaying === key;
+
+  const click = async () => {
+    if (playing) {
+      voicePlayer.stop();
+      return;
+    }
+    // 在点击里解锁:取原声要一会儿,回来就不算用户手势了
+    bgmPlayer.unlock();
+    setLoading(true);
+    setError(null);
+    try {
+      const audio = await loadRef(profileId, path);
+      refPlaying = key;
+      await voicePlayer.playBuffer(audio);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`vn-vd-play${playing ? ' on' : ''}`}
+        onClick={() => void click()}
+        disabled={loading}
+        aria-label={playing ? '停' : '听参考原声'}
+        title={playing ? '停' : '听这段参考的原声'}
+      >
+        {loading ? '…' : playing ? '■' : '▶'}
+      </button>
+      {error && <span className="vn-vd-err">{error}</span>}
+    </>
+  );
+}
+
 export function VoiceDetail({
   line,
   index,
@@ -116,6 +186,7 @@ export function VoiceDetail({
   profile,
   ctx,
   voiceEnabled,
+  fixedEmotion,
   streamingLast,
   onJump,
 }: Props) {
@@ -152,7 +223,8 @@ export function VoiceDetail({
   const effective = spriteLabelAfter(tags, ctx, emotionBefore);
   const own = hits.filter((h) => h.kind === 'sprite' && h.lineIndex === index);
 
-  const rows: [string, string, string?][] = [];
+  // [名字, 显示的内容, 悬停看到的全文, 能试听的参考音频路径]
+  const rows: [string, string, string?, string?][] = [];
   rows.push([
     '说话人',
     line.player
@@ -181,11 +253,15 @@ export function VoiceDetail({
       '语音',
       voiceSkipReason(line, profile, {
         streamingLast,
-        pendingTag: tags.some((h) => ctx.resolve(h.label).state === 'pending'),
+        pendingTag: !fixedEmotion && tags.some((h) => ctx.resolve(h.label).state === 'pending'),
       }),
     ]);
   } else {
-    rows.push(['要的情绪', plan.emotion ?? '不传(不是主声音,用它的默认情绪)']);
+    rows.push([
+      '要的情绪',
+      plan.emotion ??
+        (fixedEmotion ? '不传(插件设置里语音情绪选了不变,用默认情绪)' : '不传(不是主声音,用它的默认情绪)'),
+    ]);
     if (explain?.error) {
       rows.push(['后端', `✗ ${explain.error}`]);
     } else if (!x) {
@@ -194,7 +270,8 @@ export function VoiceDetail({
       const req = x.request;
       rows.push(['用的情绪行', x.emotion ? `「${x.emotion}」· ${howText(x)}` : `(没有情绪行)· ${howText(x)}`]);
       if (x.api_type === 'indextts') {
-        rows.push(['音色参考', baseName(str(req.spk_audio_path)), str(req.spk_audio_path)]);
+        const spk = str(req.spk_audio_path);
+        rows.push(['音色参考', baseName(spk), spk, spk || undefined]);
         rows.push([
           '情绪来源',
           x.mode === 'ref'
@@ -203,10 +280,12 @@ export function VoiceDetail({
               ? `情绪向量 ${str(req.emo_vector)}`
               : '不控制(沿用音色参考的语气)',
           x.mode === 'ref' ? str(req.emo_audio_path) : undefined,
+          x.mode === 'ref' ? str(req.emo_audio_path) : undefined,
         ]);
         rows.push(['念的文字', `${str(req.text)}(${langName(str(req.lang))})`]);
       } else {
-        rows.push(['参考音频', baseName(str(req.ref_audio_path)), str(req.ref_audio_path)]);
+        const ref = str(req.ref_audio_path);
+        rows.push(['参考音频', baseName(ref), ref, ref || undefined]);
         rows.push(['参考原文', `${str(req.prompt_text)}(${langName(str(req.prompt_lang))})`]);
         rows.push(['念的文字', `${str(req.text)}(${langName(str(req.text_lang))})`]);
         rows.push(['模型', `${baseName(x.gpt_weights)} / ${baseName(x.sovits_weights)}`, `${x.gpt_weights}\n${x.sovits_weights}`]);
@@ -237,10 +316,13 @@ export function VoiceDetail({
   return (
     <div className="vn-vd">
       <dl className="vn-vd-grid">
-        {rows.map(([k, v, full]) => (
+        {rows.map(([k, v, full, ref]) => (
           <div key={k} className="vn-vd-row">
             <dt>{k}</dt>
-            <dd title={full}>{v}</dd>
+            <dd title={full}>
+              {ref && pid && <RefPlay profileId={pid} path={ref} />}
+              {v}
+            </dd>
           </div>
         ))}
       </dl>
